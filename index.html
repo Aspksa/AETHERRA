@@ -22,12 +22,12 @@ footer{padding-top:16px;color:#96aba0;font-size:12px}label{display:block;font-si
 <script>
 'use strict';
 const canvas=document.getElementById('world'),ctx=canvas.getContext('2d'),S=52,W=48,H=36;
-let seed=42,rng,tiles,agents,homes,trees,events,day,stock,paused=false,speed=1,scale=1,ox=0,oy=0,selected=null,uid=0,drag=null,depot={x:22,y:17},reachable=new Uint8Array(W*H);
+let seed=42,rng,tiles,agents,homes,trees,berries,events,day,stock,paused=false,speed=1,scale=1,ox=0,oy=0,selected=null,uid=0,drag=null,depot={x:22,y:17},reachable=new Uint8Array(W*H);
 function rand(){rng=(Math.imul(rng,1664525)+1013904223)>>>0;return rng/4294967296}
 function noise(x,y){return (Math.sin(x*.22+seed*.017)+Math.cos(y*.25-seed*.031)+Math.sin((x+y)*.15+seed*.09))/3}
 const idx=(x,y)=>y*W+x, inside=(x,y)=>x>=0&&x<W&&y>=0&&y<H;
 function log(msg){events.unshift('День '+Math.floor(day)+': '+msg);events.length=Math.min(events.length,8);document.getElementById('events').innerHTML=events.map(e=>'<div class="event">'+e+'</div>').join('')}
-function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];events=[];day=0;stock={wood:0,food:150};selected=null;scale=.74;ox=100;oy=25;
+function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];berries=[];events=[];day=0;stock={wood:0,food:100};selected=null;scale=.74;ox=100;oy=25;
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const river=Math.abs(y-(17+4*Math.sin(x*.17+seed*.03)))<1.35;const n=noise(x,y)+rand()*.19;const water=river||n<-.66;const kind=water?'water':n>.63?'stone':n<-.32?'sand':'grass';tiles.push(kind);
 if(kind==='grass'&&rand()<.34&&!(x>13&&x<30&&y>7&&y<28))trees.push({x,y,wood:3+Math.floor(rand()*4)})}
 // Choose the largest connected landmass. All settlers and resources use this component.
@@ -53,11 +53,17 @@ if(!grass.length)throw Error('No grass in settlement area');
 const centerX=23,centerY=16;
 const dep=grass.reduce((a,b)=>Math.hypot(b%W-centerX,Math.floor(b/W)-centerY)<Math.hypot(a%W-centerX,Math.floor(a/W)-centerY)?b:a,grass[0]);
 depot={x:dep%W,y:Math.floor(dep/W)};
+// Renewable berry patches, generated only on accessible grass outside the warehouse.
+const berryCells=grass.filter(i=>i!==dep&&!trees.some(t=>t.wood>0&&idx(t.x,t.y)===i));
+for(let i=0;i<Math.min(26,berryCells.length);i++){
+ const pos=berryCells[Math.floor(rand()*berryCells.length)];
+ if(!berries.some(b=>idx(b.x,b.y)===pos))berries.push({x:pos%W,y:Math.floor(pos/W),food:3+Math.floor(rand()*3)});
+}
 const spawnCells=grass.filter(i=>Math.hypot(i%W-depot.x,Math.floor(i/W)-depot.y)<=7);
 const safeSpawn=spawnCells.length?spawnCells:grass;
 const names=['Артём','Мира','Лев','Алиса','Тим','Ника','Ян','Рада','Олег','Ева','Макс','Лада','Илья','Зоя','Роман','Вера','Марк','Ася','Данил','Соня'];
 for(let i=0;i<20;i++){const cell=safeSpawn[Math.floor(rand()*safeSpawn.length)],x=cell%W,y=Math.floor(cell/W);
-agents.push({id:uid++,name:names[i],x:x+.5,y:y+.5,age:18+Math.floor(rand()*35),state:'Исследует',target:null,carrying:0,energy:80+rand()*20,home:null})}
+agents.push({id:uid++,name:names[i],x:x+.5,y:y+.5,age:18+Math.floor(rand()*35),state:'Исследует',target:null,carrying:0,energy:80+rand()*20,home:null,hunger:12+rand()*20,health:100,decision:'wood',nextDecision:0,foraging:null,experience:{wood:0,food:0},memory:[]})}
 log('Первые 20 жителей появились на планете');updatePanel()}
 function free(x,y){return inside(x,y)&&reachable[idx(x,y)]===1&&tiles[idx(x,y)]==='grass'&&!(x===depot.x&&y===depot.y)&&!trees.some(t=>t.wood>0&&t.x===x&&t.y===y)&&!homes.some(h=>Math.abs(h.x-x)<2&&Math.abs(h.y-y)<2)}
 function passable(x,y){return inside(x,y)&&tiles[idx(x,y)]!=='water'}
@@ -93,12 +99,81 @@ function targetTree(a){
  return null;
 }
 function chooseSite(){let best=null,score=-Infinity;for(let i=0;i<60;i++){let x=12+Math.floor(rand()*23),y=6+Math.floor(rand()*25);if(!free(x,y))continue;const near=homes.length?Math.min(...homes.map(h=>Math.hypot(h.x-x,h.y-y))):Math.hypot(x-depot.x,y-depot.y);const s=-Math.abs(near-3)+rand()*3;if(s>score){score=s;best={x,y}}}return best}
+function remember(a,message){
+ a.memory.unshift('День '+Math.floor(day)+': '+message);a.memory.length=Math.min(a.memory.length,6);
+}
+function chooseWork(a){
+ const foodPerPerson=stock.food/Math.max(1,agents.filter(p=>p.health>0).length);
+ const foodScore=foodPerPerson<3?110:foodPerPerson<6?65:15;
+ const woodScore=stock.wood<12?70:stock.wood<36?45:20;
+ return foodScore>woodScore?'food':'wood';
+}
+function targetBerries(a){
+ if(a.foraging&&a.foraging.food>0)return a.foraging;
+ let chosen=null,best=Infinity;
+ for(const b of berries){
+  if(b.food<=0||!reachable[idx(b.x,b.y)])continue;
+  const distance=Math.abs(b.x-Math.floor(a.x))+Math.abs(b.y-Math.floor(a.y));
+  if(distance<best){best=distance;chosen=b}
+ }
+ a.foraging=chosen;return chosen;
+}
 function step(){day+=.065;
-for(const a of agents){a.energy=Math.max(0,a.energy-.015);if(a.energy<22){a.state='Отдыхает';a.energy=Math.min(100,a.energy+.18);continue}
-if(a.carrying){a.state='Доставляет древесину';move(a,depot.x+.5,depot.y+.5);if(Math.hypot(a.x-depot.x-.5,a.y-depot.y-.5)<.4){stock.wood+=a.carrying;a.carrying=0}continue}
-const t=targetTree(a);if(t){a.state='Добывает древесину';move(a,t.x+.5,t.y+.5);if(Math.hypot(a.x-t.x-.5,a.y-t.y-.5)<.7){if(!findPath(t.x,t.y,depot.x,depot.y)){a.tree=null;continue}t.wood--;a.carrying++;if(t.wood===0){a.tree=null;log(a.name+' срубил дерево')}} }else{a.state='Отдыхает';a.energy=Math.min(100,a.energy+.07)}}
+for(const a of agents){
+ if(a.health<=0)continue;
+ a.energy=Math.max(0,a.energy-.038);
+ a.hunger=Math.min(100,a.hunger+.095);
+ if(a.hunger>=90){a.health=Math.max(0,a.health-.035);a.state='Голодает'}
+ else if(a.hunger<40&&a.health<100)a.health=Math.min(100,a.health+.01);
+ if(a.health<=0){a.state='Погиб от голода';log(a.name+' умер от истощения');continue}
+ // Reflexes take precedence over periodic utility decisions.
+ if(a.hunger>=42&&stock.food>0){
+  a.state='Идёт за пищей';move(a,depot.x+.5,depot.y+.5);
+  if(Math.hypot(a.x-depot.x-.5,a.y-depot.y-.5)<.45){
+   stock.food--;a.hunger=Math.max(0,a.hunger-65);
+   a.state='Ест';remember(a,'Получил еду со склада');
+  }
+  continue;
+ }
+ if(a.energy<22){
+  a.state='Отдыхает';a.energy=Math.min(100,a.energy+.6);
+  continue;
+ }
+ if(a.carrying){
+  a.state='Доставляет древесину';move(a,depot.x+.5,depot.y+.5);
+  if(Math.hypot(a.x-depot.x-.5,a.y-depot.y-.5)<.4){
+   stock.wood+=a.carrying;a.experience.wood+=a.carrying;a.carrying=0;
+  }
+  continue;
+ }
+ if(day>=a.nextDecision){
+  a.decision=chooseWork(a);a.nextDecision=day+1.3+rand()*.4;
+ }
+ if(a.decision==='food'){
+  const b=targetBerries(a);
+  if(b){
+   a.state='Собирает ягоды';move(a,b.x+.5,b.y+.5);
+   if(Math.hypot(a.x-b.x-.5,a.y-b.y-.5)<.65){
+    b.food--;stock.food+=2;a.experience.food+=2;
+    if(b.food===0){a.foraging=null;remember(a,'Ягодный куст истощён')}
+   }
+   continue;
+  }
+  a.decision='wood';a.nextDecision=day+.5;
+ }
+ const t=targetTree(a);
+ if(t){
+  a.state='Добывает древесину';move(a,t.x+.5,t.y+.5);
+  if(Math.hypot(a.x-t.x-.5,a.y-t.y-.5)<.7){
+   if(!findPath(t.x,t.y,depot.x,depot.y)){a.tree=null;continue}
+   t.wood--;a.carrying++;
+   if(t.wood===0){a.tree=null;log(a.name+' срубил дерево')}
+  }
+ }else{a.state='Отдыхает';a.energy=Math.min(100,a.energy+.08)}
+}
 if(stock.wood>=12&&homes.length<10){const site=chooseSite();if(site){stock.wood-=12;const owner=agents.find(a=>!a.home)||agents[homes.length%agents.length];const h={id:uid++,x:site.x,y:site.y,level:1,owner:owner.name};owner.home=h.id;homes.push(h);log(h.owner+' построил дом')} }
-if(day>2&&Math.floor(day)%5===0&&stock.food>0&&Math.floor(day*10)%10===0)stock.food--;
+// Wild food regrows slowly; no free food is credited directly to warehouse.
+if(rand()<.09){const b=berries[Math.floor(rand()*berries.length)];if(b&&b.food<6)b.food++}
 if(trees.filter(t=>t.wood>0).length<25&&rand()<.03){const x=Math.floor(rand()*W),y=Math.floor(rand()*H);if(tiles[idx(x,y)]==='grass'&&reachable[idx(x,y)]&&!homes.some(h=>Math.hypot(h.x-x,h.y-y)<2))trees.push({x,y,wood:4})}
 }
 function move(a,x,y){
@@ -113,9 +188,9 @@ function move(a,x,y){
  const step=Math.min(.048,len),nx=a.x+dx/len*step,ny=a.y+dy/len*step;
  if(passable(Math.floor(nx),Math.floor(ny))){a.x=nx;a.y=ny}else{a.path=null}
 }
-function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.length],['Дома',homes.length],['Древесина',stock.wood],['Пища',stock.food],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
+function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
 if(selected){let o=selected.type==='agent'?agents.find(a=>a.id===selected.id):homes.find(h=>h.id===selected.id);
-document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+o.name+'</b><br>Возраст: '+o.age+'<br>Действие: '+o.state+'<br>Энергия: '+Math.round(o.energy)+'%<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+o.owner+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
+document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+o.name+'</b><br>Возраст: '+o.age+'<br>Действие: '+o.state+'<br>Энергия: '+Math.round(o.energy)+'%<br>Голод: '+Math.round(o.hunger)+'%<br>Здоровье: '+Math.round(o.health)+'%<br>Навык добычи: '+o.experience.wood+'<br>Сбор пищи: '+o.experience.food+'<br>Память: '+o.memory.slice(0,3).join('; ')+'<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+o.owner+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
 function size(){const r=canvas.getBoundingClientRect(),d=window.devicePixelRatio||1;canvas.width=Math.round(r.width*d);canvas.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0)}
 function draw(){const cw=canvas.clientWidth,ch=canvas.clientHeight;ctx.clearRect(0,0,cw,ch);ctx.save();ctx.translate(ox,oy);ctx.scale(scale,scale);
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const t=tiles[idx(x,y)],shade=(Math.sin(x*8.3+y*4.7)*9)|0;const color={grass:'#6e9956',sand:'#b9b177',stone:'#92988a',water:'#4a99ab'}[t];ctx.fillStyle=color;ctx.fillRect(x*S,y*S,S+.5,S+.5);if(t==='grass'){ctx.fillStyle='#89af6b';if((x*7+y*17)%5===0)ctx.fillRect(x*S+13,y*S+11,4,3)}}
