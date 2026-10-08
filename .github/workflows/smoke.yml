@@ -71,3 +71,4 @@ jobs:
           node tests/traits.mjs
           node tests/society.mjs
           node tests/trails.mjs
+          node tests/daynight.mjs
