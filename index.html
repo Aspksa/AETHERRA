@@ -54,7 +54,7 @@ const centerX=23,centerY=16;
 const dep=grass.reduce((a,b)=>Math.hypot(b%W-centerX,Math.floor(b/W)-centerY)<Math.hypot(a%W-centerX,Math.floor(a/W)-centerY)?b:a,grass[0]);
 depot={x:dep%W,y:Math.floor(dep/W)};
 // Renewable berry patches, generated only on accessible grass outside the warehouse.
-const berryCells=grass.filter(i=>i!==dep&&!trees.some(t=>t.wood>0&&idx(t.x,t.y)===i));
+const berryCells=grass.filter(i=>i!==dep&&Math.hypot(i%W-depot.x,Math.floor(i/W)-depot.y)<12&&!trees.some(t=>t.wood>0&&idx(t.x,t.y)===i));
 for(let i=0;i<Math.min(26,berryCells.length);i++){
  const pos=berryCells[Math.floor(rand()*berryCells.length)];
  if(!berries.some(b=>idx(b.x,b.y)===pos))berries.push({x:pos%W,y:Math.floor(pos/W),food:3+Math.floor(rand()*3)});
@@ -104,8 +104,8 @@ function remember(a,message){
 }
 function chooseWork(a){
  const foodPerPerson=stock.food/Math.max(1,agents.filter(p=>p.health>0).length);
- const foodScore=foodPerPerson<3?110:foodPerPerson<6?65:15;
- const woodScore=stock.wood<12?70:stock.wood<36?45:20;
+ const foodScore=foodPerPerson<3?120:foodPerPerson<6?85:15;
+ const woodScore=(stock.wood<12?70:stock.wood<36?45:20)+(a.id%3===0?30:0);
  return foodScore>woodScore?'food':'wood';
 }
 function targetBerries(a){
