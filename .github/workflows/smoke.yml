@@ -69,3 +69,4 @@ jobs:
           node tests/home-rest.mjs
           node tests/planner.mjs
           node tests/traits.mjs
+          node tests/society.mjs
