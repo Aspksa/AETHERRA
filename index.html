@@ -125,6 +125,7 @@ for(const a of agents){
  if(a.health<=0)continue;
  a.age+=.065/60;
  if(a.age>75)a.health=Math.max(0,a.health-.008*(a.age-74));
+ if(a.health<=0){a.state='Умер от старости';log(a.name+' умер от старости');continue}
  a.energy=Math.max(0,a.energy-.038);
  a.hunger=Math.min(100,a.hunger+.095);
  if(a.hunger>=90){a.health=Math.max(0,a.health-.035);a.state='Голодает'}
@@ -141,7 +142,13 @@ for(const a of agents){
  }
  if(a.energy<22)a.resting=true;
  if(a.resting){
-  a.state=a.home!==null?'Спит дома':'Отдыхает';a.energy=Math.min(100,a.energy+(a.home!==null?1.1:.75));
+  const home=homes.find(h=>h.id===a.home);
+  if(home&&Math.hypot(a.x-home.x-.5,a.y-home.y-.5)>.45){
+   a.state='Идёт домой отдыхать';
+   move(a,home.x+.5,home.y+.5);
+   continue;
+  }
+  a.state=home?'Спит дома':'Отдыхает';a.energy=Math.min(100,a.energy+(home?1.1:.75));
   if(a.energy>=80)a.resting=false;
   continue;
  }
