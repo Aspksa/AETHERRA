@@ -1,9 +1,12 @@
-"""AETHERRA local browser server; no third-party packages."""
+"""AETHERRA local browser server and localhost-only update API."""
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Timer
+from threading import Timer, Thread
 from urllib.parse import urlparse
+import json
+import subprocess
+import sys
 import webbrowser
 
 HOST = "127.0.0.1"
@@ -11,16 +14,51 @@ PORT = 8765
 ROOT = Path(__file__).resolve().parent
 
 class Handler(SimpleHTTPRequestHandler):
+    def _json(self, status, data):
+        payload = json.dumps(data).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_GET(self):
-        if urlparse(self.path).path == "/health":
-            payload = b'{"status":"ok","app":"AETHERRA"}'
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(payload)))
-            self.end_headers()
-            self.wfile.write(payload)
+        route = urlparse(self.path).path
+        if route == "/health":
+            self._json(200, {"status": "ok", "app": "AETHERRA"})
+            return
+        if route == "/api/update/check":
+            try:
+                from update import check
+                self._json(200, check())
+            except Exception as exc:
+                self._json(503, {"error": str(exc)})
             return
         super().do_GET()
+
+    def do_POST(self):
+        if urlparse(self.path).path != "/api/update/install":
+            self._json(404, {"error": "Not found"})
+            return
+        # Only requests initiated by our own local web page are accepted.
+        origin = self.headers.get("Origin")
+        if origin != f"http://{HOST}:{PORT}":
+            self._json(403, {"error": "Invalid origin"})
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length > 1024:
+                self._json(413, {"error": "Request too large"})
+                return
+            self.rfile.read(length)
+            kwargs = {"cwd": str(ROOT), "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+            if sys.platform == "win32":
+                kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+            subprocess.Popen([sys.executable, str(ROOT / "update.py"), "install-restart"], **kwargs)
+            self._json(202, {"status": "updating"})
+            Thread(target=self.server.shutdown, daemon=True).start()
+        except Exception as exc:
+            self._json(500, {"error": str(exc)})
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
@@ -29,9 +67,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main():
     try:
-        server = ThreadingHTTPServer(
-            (HOST, PORT), partial(Handler, directory=str(ROOT))
-        )
+        server = ThreadingHTTPServer((HOST, PORT), partial(Handler, directory=str(ROOT)))
     except OSError as exc:
         print(f"Unable to start AETHERRA on {HOST}:{PORT}: {exc}")
         return 1
