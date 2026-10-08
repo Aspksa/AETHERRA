@@ -74,7 +74,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             kwargs = {"cwd": str(ROOT), "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
             if sys.platform == "win32":
-                kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
             with (ROOT / "AETHERRA_UPDATE.log").open("a", encoding="utf-8") as update_log:
                 kwargs["stdout"] = update_log
                 kwargs["stderr"] = subprocess.STDOUT
