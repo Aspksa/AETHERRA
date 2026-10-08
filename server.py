@@ -65,7 +65,8 @@ class Handler(SimpleHTTPRequestHandler):
                 from cloudru import connect, disconnect, test_connection, ask_world_advice
                 try:
                     if route == "/api/ai/connect":
-                        config = json.loads(body)\n                        result = connect(config.get("key"), config.get("model"))
+                        config = json.loads(body)
+                        result = connect(config.get("key"), config.get("model"))
                     elif route == "/api/ai/disconnect":
                         result = disconnect()
                     elif route == "/api/ai/advise":
