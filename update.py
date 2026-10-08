@@ -25,7 +25,7 @@ API = f"https://api.github.com/repos/{REPO}/commits/main"
 ARCHIVE = f"https://github.com/{REPO}/archive/refs/heads/main.zip"
 FILES = ("index.html", "server.py", "AETHERRA.bat", "README.md",
          "update.py", "UPDATE_AETHERRA.bat", "cloudru.py",
-         "diagnose.py", "DIAGNOSE_AETHERRA.bat", "PLAY_OFFLINE.bat")
+         "diagnose.py", "DIAGNOSE_AETHERRA.bat", "PLAY_OFFLINE.bat", "AETHERRA_START.ps1")
 MAX_ZIP = 20 * 1024 * 1024
 
 
@@ -107,17 +107,24 @@ def verify_ci(sha):
 
 
 def runtime_files(archive):
-    """Only root-level executable app files, never saves, keys, tests or workflows."""
-    allowed = {".py", ".bat", ".html", ".js", ".css"}
+    """Whitelisted game files; nested lib/assets stay portable, data stays intact."""
+    root_ext = {".py", ".bat", ".html", ".js", ".css", ".ps1"}
+    asset_ext = root_ext | {".png", ".jpg", ".jpeg", ".webp", ".gif", ".json", ".svg", ".woff2", ".wasm"}
     files = {}
-    for name in archive.namelist():
-        parts = Path(name).parts
-        if len(parts) != 2 or name.endswith("/"):
+    for member in archive.namelist():
+        if member.endswith("/"):
             continue
-        filename = parts[-1]
-        if filename == "README.md" or (Path(filename).suffix.lower() in allowed and
-                                       not filename.startswith(".")):
-            files[filename] = name
+        parts = Path(member.replace("\\", "/")).parts
+        if len(parts) < 2 or any(p in ("", ".", "..") for p in parts):
+            continue
+        relative = Path(*parts[1:])
+        if relative.parts[0] in ("lib", "assets") and len(relative.parts) >= 2:
+            allowed = relative.suffix.lower() in asset_ext
+        else:
+            allowed = len(relative.parts) == 1 and (
+                relative.name == "README.md" or relative.suffix.lower() in root_ext)
+        if allowed and not any(part.startswith(".") for part in relative.parts):
+            files[relative.as_posix()] = member
     if any(name not in files for name in FILES):
         raise ValueError("Incomplete update archive")
     return files
@@ -131,6 +138,7 @@ def rollback():
     for name in data["files"]:
         saved = BASE / ".aetherra_backup" / name
         current = BASE / name
+        current.parent.mkdir(parents=True, exist_ok=True)
         if name in data["existing"]:
             shutil.copy2(saved, current)
         elif current.exists():
@@ -160,8 +168,9 @@ def install():
                 payload = z.read(member)
                 if len(payload) > 5 * 1024 * 1024:
                     raise ValueError("File too large: " + filename)
+                (temp / filename).parent.mkdir(parents=True, exist_ok=True)
                 (temp / filename).write_bytes(payload)
-            for file in temp.glob("*.py"):
+            for file in temp.rglob("*.py"):
                 compile(file.read_bytes(), file.name, "exec")
             html = (temp / "index.html").read_text(encoding="utf-8")
             if "<canvas" not in html or "</html>" not in html:
@@ -172,6 +181,7 @@ def install():
             previous_sha = local_sha()
             for name in members:
                 if (BASE / name).exists():
+                    (backup / name).parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(BASE / name, backup / name)
                     existing.append(name)
             (backup / "manifest.json").write_text(
@@ -179,6 +189,7 @@ def install():
                             "installed": previous_sha}), encoding="utf-8")
             try:
                 for name in members:
+                    (BASE / name).parent.mkdir(parents=True, exist_ok=True)
                     os.replace(temp / name, BASE / name)
                 (BASE / ".aetherra_version").write_text(sha, encoding="ascii")
             except Exception:
