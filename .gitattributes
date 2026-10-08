@@ -1,0 +1,3 @@
+# Windows cmd mis-handles labels in LF-only batch files; ship CRLF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf

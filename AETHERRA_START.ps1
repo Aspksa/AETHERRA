@@ -4,6 +4,13 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $log = Join-Path $root 'AETHERRA_STARTUP.log'
 Set-Location -LiteralPath $root
 "=== AETHERRA startup ===" | Set-Content -LiteralPath $log -Encoding UTF8
+# One writer for the whole log: UTF-8 everywhere (Windows PowerShell 5.1 Tee-Object
+# appends UTF-16 and Add-Content defaults to ANSI, which mixed encodings in one file),
+# and the user profile path is masked so the log can be shared safely.
+function Write-Log([string]$text) {
+    if ($env:USERPROFILE) { $text = $text.Replace($env:USERPROFILE, '~') }
+    Add-Content -LiteralPath $log -Value $text -Encoding UTF8
+}
 $uri = 'http://127.0.0.1:8765/'
 function Healthy {
     try {
@@ -34,36 +41,38 @@ foreach ($base in @((Join-Path $env:LOCALAPPDATA 'Programs\Python'),(Join-Path $
 $selected = $null
 foreach ($exe in $candidates) {
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { continue }
-    "Checking candidate: $exe" | Add-Content -LiteralPath $log
+    Write-Log "Checking candidate: $exe"
     try {
-        $args = if ((Split-Path $exe -Leaf) -eq 'py.exe') { @('-3','-c',"print('AETHERRA_PYTHON_OK')") } else { @('-c',"print('AETHERRA_PYTHON_OK')") }
-        $result = & $exe @args 2>&1 | Out-String
+        $probeArgs = if ((Split-Path $exe -Leaf) -eq 'py.exe') { @('-3','-c',"print('AETHERRA_PYTHON_OK')") } else { @('-c',"print('AETHERRA_PYTHON_OK')") }
+        $result = & $exe @probeArgs 2>&1 | Out-String
         if ($LASTEXITCODE -eq 0 -and $result.Trim() -eq 'AETHERRA_PYTHON_OK') {
             $selected = $exe
             break
         }
-        "Candidate failed: exit=$LASTEXITCODE output=$($result.Trim())" | Add-Content -LiteralPath $log
+        Write-Log "Candidate failed: exit=$LASTEXITCODE output=$($result.Trim())"
     } catch {
-        "Candidate failed: $($_.Exception.Message)" | Add-Content -LiteralPath $log
+        Write-Log "Candidate failed: $($_.Exception.Message)"
     }
 }
 if (-not $selected) {
     Write-Host 'ERROR: No working Python interpreter was found.' -ForegroundColor Red
     Write-Host 'Your Windows Python commands may point to a deleted Python314 installation.'
     Write-Host 'Repair/install Python, then run this launcher again. Do not delete your world saves.'
+    Write-Host 'Quick fix: put a portable Python (Windows embeddable package) into the "python" folder next to the game.'
     Write-Host 'See AETHERRA_STARTUP.log for attempted interpreter paths.'
-    'ERROR: No interpreter passed the readiness probe.' | Add-Content -LiteralPath $log
+    Write-Log 'ERROR: No interpreter passed the readiness probe.'
     exit 1
 }
 Write-Host "Starting AETHERRA at $uri"
-"Selected interpreter: $selected" | Add-Content -LiteralPath $log
+Write-Log "Selected interpreter: $selected"
 try {
-    $args = if ((Split-Path $selected -Leaf) -eq 'py.exe') { @('-3','-u',(Join-Path $root 'server.py')) } else { @('-u',(Join-Path $root 'server.py')) }
-    & $selected @args 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
+    $serverArgs = if ((Split-Path $selected -Leaf) -eq 'py.exe') { @('-3','-u',(Join-Path $root 'server.py')) } else { @('-u',(Join-Path $root 'server.py')) }
+    & $selected @serverArgs 2>&1 | ForEach-Object { $line = "$_"; Write-Log $line; Write-Host $line }
     $exitCode = $LASTEXITCODE
     if ($null -eq $exitCode) { $exitCode = 1 }
 } catch {
-    "Server exception: $($_.Exception.Message)" | Tee-Object -FilePath $log -Append | Out-Host
+    Write-Log "Server exception: $($_.Exception.Message)"
+    Write-Host "Server exception: $($_.Exception.Message)"
     $exitCode = 1
 }
 if ($exitCode -ne 0) { Write-Host "Server exited with code $exitCode. Review AETHERRA_STARTUP.log" -ForegroundColor Red }

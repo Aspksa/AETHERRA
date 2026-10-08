@@ -7,3 +7,6 @@ AETHERRA_DIAGNOSTICS.txt
 __pycache__/
 *.pyc
 .venv/
+AETHERRA_SERVER.log
+.aetherra_managed_files.json
+python/

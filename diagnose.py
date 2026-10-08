@@ -18,16 +18,30 @@ EXPECTED = ("AETHERRA.bat", "PLAY_OFFLINE.bat", "server.py", "index.html",
             "update.py", "UPDATE_AETHERRA.bat")
 
 
+TOKEN = "AETHERRA_PYTHON_OK"
+CODE = "import sys;print('%s', sys.version.split()[0])" % TOKEN
+
+
 def probe(command):
+    """Run real Python code: a broken alias can exit 0 on --version yet fail to start."""
     try:
         result = subprocess.run(command, capture_output=True, text=True,
                                 timeout=6, errors="replace", check=False)
-        return {"available": result.returncode == 0,
-                "return_code": result.returncode,
-                "version": result.stdout.strip().splitlines()[0][:100]
-                           if result.returncode == 0 and result.stdout.strip() else ""}
+        lines = result.stdout.strip().splitlines()
+        ok = result.returncode == 0 and bool(lines) and lines[0].startswith(TOKEN)
+        report = {"available": ok, "return_code": result.returncode,
+                  "version": lines[0][len(TOKEN):].strip()[:40] if ok else ""}
+        if not ok and result.stderr.strip():
+            # Keep the reason (e.g. 0x80070002), but never the user's profile path.
+            report["error_text"] = mask(result.stderr.strip().splitlines()[0])[:200]
+        return report
     except (OSError, subprocess.TimeoutExpired) as err:
         return {"available": False, "error": type(err).__name__}
+
+
+def mask(text):
+    home = os.path.expanduser("~")
+    return text.replace(home, "~") if home and home != "~" else text
 
 
 def diagnose(root=ROOT):
@@ -39,11 +53,11 @@ def diagnose(root=ROOT):
               "python": {}, "server_port": {}}
     for name in ("py", "python", "python3"):
         exe = shutil.which(name)
-        checks["python"][name] = probe([exe, "-3", "--version"] if name == "py"
-                                        else [exe, "--version"]) if exe else {"available": False, "error": "not_on_path"}
+        checks["python"][name] = probe([exe, "-3", "-c", CODE] if name == "py"
+                                        else [exe, "-c", CODE]) if exe else {"available": False, "error": "not_on_path"}
     for name, exe in (("portable", root / "python" / "python.exe"),
                       ("venv", root / ".venv" / "Scripts" / "python.exe")):
-        checks["python"][name] = probe([str(exe), "--version"]) if exe.is_file() else {"available": False, "error": "missing"}
+        checks["python"][name] = probe([str(exe), "-c", CODE]) if exe.is_file() else {"available": False, "error": "missing"}
     try:
         with socket.socket() as sock:
             sock.settimeout(1.5)

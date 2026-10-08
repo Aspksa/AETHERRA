@@ -13,6 +13,10 @@ import webbrowser
 HOST = "127.0.0.1"
 PORT = 8765
 ROOT = Path(__file__).resolve().parent
+# Embeddable Python (python\python.exe + ._pth) does not add the script folder to
+# sys.path, which would break the lazy imports of cloudru/update below.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 class Handler(SimpleHTTPRequestHandler):
     def _json(self, status, data):
