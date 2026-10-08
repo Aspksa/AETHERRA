@@ -114,12 +114,12 @@ document.getElementById('aiSettingsOpen').onclick=async()=>{aiMask.classList.add
 document.getElementById('aiSettingsClose').onclick=()=>aiMask.classList.remove('open');
 aiMask.addEventListener('click',e=>{if(e.target===aiMask)aiMask.classList.remove('open')});
 async function aiPost(path,payload={}){
- if(location.protocol==='file:')throw Error('Запустите AETHERRA.bat с Python-сервером');
+ if(location.protocol==='file:')throw Error('Игра открыта как файл, без сервера. Запустите AETHERRA.bat и откройте http://127.0.0.1:8765/');
  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
  const data=await r.json();if(!r.ok)throw Error(data.error||'Ошибка Cloud.ru');return data;
 }
 async function aiStatusRefresh(){
- if(location.protocol==='file:'){aiState.textContent='Автономный режим: нужен AETHERRA.bat';return}
+ if(location.protocol==='file:'){aiState.textContent='Автономный режим file://. Закройте эту вкладку, запустите AETHERRA.bat и откройте http://127.0.0.1:8765/';return}
  try{const r=await fetch('/api/ai/status',{cache:'no-store'});const d=await r.json();aiState.textContent=d.connected?'Ключ подключён к локальному серверу':'Ключ не подключён'}catch(e){aiState.textContent='Сервер недоступен: '+e.message}
 }
 document.getElementById('aiConnect').onclick=async()=>{
@@ -154,7 +154,7 @@ async function worldUpdateCheck(){
  worldUpdateInstall.disabled=true;worldUpdateInfo=null;
  worldUpdateState.textContent='Проверяем версию...';
  if(location.protocol==='file:'){
-  worldUpdateState.textContent='Автономный режим: для установки откройте UPDATE_AETHERRA.bat. Проверка версии в браузере недоступна.';
+  worldUpdateState.textContent='Игра открыта из файла (file://), поэтому проверка недоступна. Запустите AETHERRA.bat и откройте http://127.0.0.1:8765/';
   return;
  }
  try{
@@ -170,7 +170,7 @@ async function worldUpdateCheck(){
   worldUpdateInstall.disabled=!data.update_available;
  }catch(error){worldUpdateState.textContent='Не удалось проверить обновление: '+(error.name==='TimeoutError'?'Превышено время ожидания GitHub (35 секунд). Проверьте подключение к интернету.':error.message)}
 }
-document.getElementById('worldUpdateCheck').onclick=worldUpdateCheck;
+document.getElementById('worldUpdateCheck').onclick=()=>{worldUpdateState.textContent='Начинаем проверку...';worldUpdateCheck()};
 worldUpdateInstall.onclick=async()=>{
  if(!worldUpdateInfo||!worldUpdateInfo.update_available)return;
  if(!confirm('Установить обновление AETHERRA? Текущий мир пока не сохраняется и будет перезапущен.'))return;
@@ -184,5 +184,11 @@ worldUpdateInstall.onclick=async()=>{
  }catch(error){worldUpdateState.textContent='Ошибка установки: '+error.message;worldUpdateInstall.disabled=false}
 };
 
+if(location.protocol==='file:'){
+ const alertBox=document.createElement('div');
+ alertBox.style.cssText='background:#634325;color:white;padding:12px 20px;font-size:14px;border-bottom:2px solid #d3a060';
+ alertBox.textContent='⚠ AETHERRA открыта без Python-сервера: Cloud.ru и проверка обновлений недоступны. Запустите AETHERRA.bat и используйте адрес http://127.0.0.1:8765/';
+ document.querySelector('header').insertAdjacentElement('afterend',alertBox);
+}
 window.addEventListener('resize',size);size();createWorld();draw();setInterval(()=>{if(!paused)for(let i=0;i<speed;i++)step();updatePanel()},120);
 </script></body></html>
