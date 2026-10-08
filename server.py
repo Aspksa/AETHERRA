@@ -42,7 +42,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         route = urlparse(self.path).path
-        if route not in ("/api/update/install", "/api/ai/connect", "/api/ai/disconnect", "/api/ai/test"):
+        if route not in ("/api/update/install", "/api/ai/connect", "/api/ai/disconnect", "/api/ai/test", "/api/ai/advise"):
             self._json(404, {"error": "Not found"})
             return
         # Only requests initiated by our own local web page are accepted.
@@ -57,12 +57,14 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             body = self.rfile.read(length)
             if route.startswith("/api/ai/"):
-                from cloudru import connect, disconnect, test_connection
+                from cloudru import connect, disconnect, test_connection, ask_world_advice
                 try:
                     if route == "/api/ai/connect":
                         result = connect(json.loads(body).get("key"))
                     elif route == "/api/ai/disconnect":
                         result = disconnect()
+                    elif route == "/api/ai/advise":
+                        result = ask_world_advice(json.loads(body).get("question"))
                     else:
                         result = test_connection()
                     self._json(200, result)
