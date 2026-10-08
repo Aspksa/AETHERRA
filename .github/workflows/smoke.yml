@@ -25,4 +25,6 @@ jobs:
         with:
           node-version: "22"
       - name: Extract and check inline JavaScript
-        run: |\n          node tests/check-inline-js.mjs\n          node tests/water-path.mjs
+        run: |
+          node tests/check-inline-js.mjs
+          node tests/water-path.mjs
