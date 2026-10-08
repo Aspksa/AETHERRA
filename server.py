@@ -27,6 +27,10 @@ class Handler(SimpleHTTPRequestHandler):
         if route == "/health":
             self._json(200, {"status": "ok", "app": "AETHERRA"})
             return
+        if route == "/api/ai/status":
+            from cloudru import status
+            self._json(200, status())
+            return
         if route == "/api/update/check":
             try:
                 from update import check
@@ -37,7 +41,8 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
-        if urlparse(self.path).path != "/api/update/install":
+        route = urlparse(self.path).path
+        if route not in ("/api/update/install", "/api/ai/connect", "/api/ai/disconnect", "/api/ai/test"):
             self._json(404, {"error": "Not found"})
             return
         # Only requests initiated by our own local web page are accepted.
@@ -47,10 +52,23 @@ class Handler(SimpleHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if length > 1024:
+            if length < 0 or length > 8192:
                 self._json(413, {"error": "Request too large"})
                 return
-            self.rfile.read(length)
+            body = self.rfile.read(length)
+            if route.startswith("/api/ai/"):
+                from cloudru import connect, disconnect, test_connection
+                try:
+                    if route == "/api/ai/connect":
+                        result = connect(json.loads(body).get("key"))
+                    elif route == "/api/ai/disconnect":
+                        result = disconnect()
+                    else:
+                        result = test_connection()
+                    self._json(200, result)
+                except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                    self._json(400, {"error": str(exc)})
+                return
             kwargs = {"cwd": str(ROOT), "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
             if sys.platform == "win32":
                 kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE

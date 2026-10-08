@@ -20,7 +20,7 @@ REPO = "Aspksa/AETHERRA"
 API = f"https://api.github.com/repos/{REPO}/commits/main"
 ARCHIVE = f"https://github.com/{REPO}/archive/refs/heads/main.zip"
 FILES = ("index.html", "server.py", "AETHERRA.bat", "README.md",
-         "update.py", "UPDATE_AETHERRA.bat")
+         "update.py", "UPDATE_AETHERRA.bat", "cloudru.py")
 MAX_ZIP = 20 * 1024 * 1024
 
 
