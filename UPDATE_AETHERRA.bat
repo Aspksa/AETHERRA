@@ -1,29 +1,46 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-set "PYTHON="
-if exist "%~dp0python\python.exe" set "PYTHON=%~dp0python\python.exe"
-if not defined PYTHON if exist "%~dp0.venv\Scripts\python.exe" set "PYTHON=%~dp0.venv\Scripts\python.exe"
-if defined PYTHON goto runlocal
+set "ROOT=%~dp0"
+if exist "%ROOT%python\python.exe" (
+  "%ROOT%python\python.exe" "%ROOT%update.py" install
+  goto finish
+)
+if exist "%ROOT%.venv\Scripts\python.exe" (
+  "%ROOT%.venv\Scripts\python.exe" "%ROOT%update.py" install
+  goto finish
+)
 where py >nul 2>nul
 if not errorlevel 1 (
-  py -3 update.py install
-  goto finish
+  py -3 -c "import sys; assert sys.version_info.major == 3" >nul 2>nul
+  if not errorlevel 1 (
+    py -3 "%ROOT%update.py" install
+    goto finish
+  )
 )
 where python >nul 2>nul
 if not errorlevel 1 (
-  python update.py install
-  goto finish
+  python -c "import sys; assert sys.version_info.major == 3" >nul 2>nul
+  if not errorlevel 1 (
+    python "%ROOT%update.py" install
+    goto finish
+  )
 )
-echo Update requires Python 3 and an internet connection.
+where python3 >nul 2>nul
+if not errorlevel 1 (
+  python3 -c "import sys; assert sys.version_info.major == 3" >nul 2>nul
+  if not errorlevel 1 (
+    python3 "%ROOT%update.py" install
+    goto finish
+  )
+)
+echo No working Python 3 found. Repair Python or Python Launcher.
 pause
 exit /b 1
-:runlocal
-"%PYTHON%" update.py install
 :finish
 if errorlevel 1 (
-  echo Update failed. Your original files should still be available.
+  echo Update failed. Existing files are preserved when possible.
 ) else (
-  echo Update complete. Reopen AETHERRA.bat if the game was running.
+  echo Update completed.
 )
 pause
