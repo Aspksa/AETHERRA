@@ -13,9 +13,10 @@ main{position:relative;overflow:hidden;background:#0a1715;min-height:540px}canva
 .controls{display:flex;gap:7px;flex-wrap:wrap}.event{font-size:12px;color:#b5c9b7;padding:10px 0;border-bottom:1px solid #30403d}.selected{background:#223732;padding:12px;border-radius:10px;min-height:125px;line-height:1.8;font-size:13px}
 footer{padding-top:16px;color:#96aba0;font-size:12px}label{display:block;font-size:13px;margin-top:12px}
 @media(max-width:850px){.layout{grid-template-columns:1fr}aside{border:0;border-bottom:1px solid #30413d}main{order:-1;min-height:55vh}canvas{min-height:55vh}header{flex-wrap:wrap}}
+.world-update-mask{display:none;position:fixed;inset:0;background:#05100edc;z-index:40;align-items:center;justify-content:center;padding:20px}.world-update-mask.open{display:flex}.world-update{width:min(570px,100%);max-height:90vh;overflow-y:auto;background:#192926;border:1px solid #5d7767;border-radius:18px;padding:25px;box-shadow:0 20px 85px #0008}.world-update h2{font-size:23px;margin:0 0 7px}.world-update .muted{color:#a6b7ac;font-size:13px}.world-update .version-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0}.world-update .version{background:#253d35;border-radius:10px;padding:13px;overflow-wrap:anywhere}.world-update .version b{display:block;font-size:18px;color:#f3d99f;margin-top:6px}.world-update .release{background:#101e1b;border:1px solid #38564b;border-radius:12px;padding:14px;white-space:pre-wrap;line-height:1.5;font-size:13px;margin:12px 0}.world-update .actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}.world-update .actions button{flex:1}.world-update #worldUpdateInstall:disabled{opacity:.45;cursor:not-allowed}
 </style></head>
-<body><header><div><h1>AETHERRA</h1><small>ЖИВАЯ ВСЕЛЕННАЯ • Прототип 0.1.0</small></div><div class="controls"><button id="pause">⏸ Пауза</button><button id="faster">⏩ x1</button><button id="new">↻ Новый мир</button><button id="checkUpdate">⬇ Обновить</button></div></header>
-<div class="layout"><aside><h2>🌍 Состояние мира</h2><div id="stats"></div><h3>Обновление с GitHub</h3><p id="updateStatus">Кнопка проверяет GitHub. В автономном режиме запустите UPDATE_AETHERRA.bat.</p><h3>Управление</h3><p>Колесо мыши — масштаб. Зажать и тянуть — перемещение. Нажать на жителя или дом — информация.</p><p>Жители сами выбирают дерево, добывают древесину и строят жилища. Постройки расходуют реальные ресурсы.</p><h3>Карта</h3><label>Seed мира <input id="seed" type="number" value="42" min="1" max="999999" style="width:100%;margin-top:6px;background:#102522;color:#eee;padding:9px;border:1px solid #527063;border-radius:8px"></label><footer>Автономная симуляция • Canvas 2D • Python server</footer></aside>
+<body><header><div><h1>AETHERRA</h1><small>ЖИВАЯ ВСЕЛЕННАЯ • Прототип 0.1.0</small></div><div class="controls"><button id="pause">⏸ Пауза</button><button id="faster">⏩ x1</button><button id="new">↻ Новый мир</button><button id="checkUpdate">⚙ Обновление мира</button></div></header>
+<div class="world-update-mask" id="worldUpdateMask" role="dialog" aria-modal="true" aria-labelledby="worldUpdateTitle"><section class="world-update"><div style="display:flex;justify-content:space-between;align-items:start;gap:10px"><div><h2 id="worldUpdateTitle">🌍 Обновление мира</h2><div class="muted">Управление версиями AETHERRA через GitHub</div></div><button id="worldUpdateClose" aria-label="Закрыть">✕</button></div><div class="version-grid"><div class="version"><span class="muted">Установленная версия</span><b id="worldUpdateCurrent">—</b></div><div class="version"><span class="muted">Версия на GitHub</span><b id="worldUpdateLatest">—</b></div></div><div id="worldUpdateState" class="muted" role="status" aria-live="polite">Нажмите «Проверить» для проверки версии.</div><h3>Описание обновления</h3><div class="release" id="worldUpdateNotes">Описание появится после проверки GitHub.</div><a id="worldUpdateLink" href="https://github.com/Aspksa/AETHERRA/commits/main" target="_blank" rel="noopener noreferrer" style="color:#a8d2b3">Посмотреть историю изменений на GitHub ↗</a><div class="actions"><button id="worldUpdateCheck">🔎 Проверить</button><button id="worldUpdateInstall" disabled>⬇ Скачать и установить</button></div><p class="muted">Установка требует локального Python-сервера, интернета и подтверждения. Перед заменой файлов создаётся резервная копия. Несохранённое состояние текущего мира будет потеряно.</p></section></div><div class="layout"><aside><h2>🌍 Состояние мира</h2><div id="stats"></div><h3>Управление</h3><p>Колесо мыши — масштаб. Зажать и тянуть — перемещение. Нажать на жителя или дом — информация.</p><p>Жители сами выбирают дерево, добывают древесину и строят жилища. Постройки расходуют реальные ресурсы.</p><h3>Карта</h3><label>Seed мира <input id="seed" type="number" value="42" min="1" max="999999" style="width:100%;margin-top:6px;background:#102522;color:#eee;padding:9px;border:1px solid #527063;border-radius:8px"></label><footer>Автономная симуляция • Canvas 2D • Python server</footer></aside>
 <main><canvas id="world"></canvas><div class="overlay">🟢 Автономная симуляция · кликай по объектам · масштабируй карту</div></main>
 <aside><h2>👤 Выбранный объект</h2><div class="selected" id="selected">Выбери жителя или дом на карте.</div><h3>📜 События мира</h3><div id="events"></div></aside></div>
 <script>
@@ -108,22 +109,46 @@ canvas.addEventListener('pointerup',e=>{if(drag&&!drag.moved)clickAt(e);drag=nul
 document.getElementById('pause').onclick=()=>{paused=!paused;document.getElementById('pause').textContent=paused?'▶ Продолжить':'⏸ Пауза'};
 document.getElementById('faster').onclick=()=>{speed=speed===1?3:speed===3?8:1;document.getElementById('faster').textContent='⏩ x'+speed};
 document.getElementById('new').onclick=createWorld;
-document.getElementById('checkUpdate').onclick=async()=>{
- const status=document.getElementById('updateStatus');
- status.textContent='Проверяем GitHub...';
- try {
-  if(location.protocol==='file:'){status.textContent='Запустите UPDATE_AETHERRA.bat рядом с игрой.';return}
-  const result=await fetch('/api/update/check',{cache:'no-store'});
-  const info=await result.json();
-  if(!result.ok)throw Error(info.error||'Ошибка проверки');
-  if(!info.update_available){status.textContent='Последняя версия уже установлена.';return}
-  status.textContent='Доступна версия '+info.latest.slice(0,8);
-  if(!confirm('Скачать обновление с GitHub и перезапустить AETHERRA?'))return;
+const worldUpdateMask=document.getElementById('worldUpdateMask');
+const worldUpdateState=document.getElementById('worldUpdateState');
+const worldUpdateInstall=document.getElementById('worldUpdateInstall');
+let worldUpdateInfo=null;
+document.getElementById('checkUpdate').onclick=()=>{worldUpdateMask.classList.add('open');worldUpdateCheck()};
+document.getElementById('worldUpdateClose').onclick=()=>worldUpdateMask.classList.remove('open');
+worldUpdateMask.addEventListener('click',event=>{if(event.target===worldUpdateMask)worldUpdateMask.classList.remove('open')});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')worldUpdateMask.classList.remove('open')});
+async function worldUpdateCheck(){
+ worldUpdateInstall.disabled=true;worldUpdateInfo=null;
+ worldUpdateState.textContent='Проверяем версию...';
+ if(location.protocol==='file:'){
+  worldUpdateState.textContent='Автономный режим: для установки откройте UPDATE_AETHERRA.bat. Проверка версии в браузере недоступна.';
+  return;
+ }
+ try{
+  const response=await fetch('/api/update/check',{cache:'no-store'});
+  const data=await response.json();
+  if(!response.ok)throw Error(data.error||'GitHub недоступен');
+  worldUpdateInfo=data;
+  document.getElementById('worldUpdateCurrent').textContent=data.current_version||(data.installed?data.installed.slice(0,12):'не определена');
+  document.getElementById('worldUpdateLatest').textContent=data.latest_version||(data.latest?data.latest.slice(0,12):'—');
+  document.getElementById('worldUpdateNotes').textContent=data.release_notes||data.description||'Описание изменений не опубликовано.';
+  if(data.source&&data.source.startsWith('https://github.com/Aspksa/AETHERRA/'))document.getElementById('worldUpdateLink').href=data.source;
+  worldUpdateState.textContent=data.update_available?'Доступна новая версия для установки.':'Установлена актуальная версия.';
+  worldUpdateInstall.disabled=!data.update_available;
+ }catch(error){worldUpdateState.textContent='Не удалось проверить обновление: '+error.message}
+}
+document.getElementById('worldUpdateCheck').onclick=worldUpdateCheck;
+worldUpdateInstall.onclick=async()=>{
+ if(!worldUpdateInfo||!worldUpdateInfo.update_available)return;
+ if(!confirm('Установить обновление AETHERRA? Текущий мир пока не сохраняется и будет перезапущен.'))return;
+ worldUpdateInstall.disabled=true;
+ worldUpdateState.textContent='Начинаем установку. Не закрывайте консоль сервера.';
+ try{
   const response=await fetch('/api/update/install',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
   const data=await response.json();
-  if(!response.ok)throw Error(data.error||'Ошибка установки');
-  status.textContent='Обновление запущено. После перезапуска сервера обновите страницу.';
- }catch(err){status.textContent='Ошибка обновления: '+err.message}
+  if(!response.ok)throw Error(data.error||'Не удалось запустить установку');
+  worldUpdateState.textContent='Установка запущена. Дождитесь перезапуска сервера и обновите страницу.';
+ }catch(error){worldUpdateState.textContent='Ошибка установки: '+error.message;worldUpdateInstall.disabled=false}
 };
 
 window.addEventListener('resize',size);size();createWorld();draw();setInterval(()=>{if(!paused)for(let i=0;i<speed;i++)step();updatePanel()},120);
