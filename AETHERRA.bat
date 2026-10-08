@@ -49,15 +49,25 @@ echo ERROR: No functioning Python interpreter was found.
 >> "%LOG%" echo ERROR: No working interpreter
 goto failure
 
+
 :validate
 >> "%LOG%" echo Checking Python candidate: %PYTHON%
-if not "%PYTHON%"=="py" "%PYTHON%" -c "import sys, os; print('Interpreter:',sys.executable); print('Server exists:',os.path.isfile('server.py'))" >> "%LOG%" 2>&1
+set "PROBE=%TEMP%\aetherra-python-probe-%RANDOM%-%RANDOM%.txt"
 if "%PYTHON%"=="py" (
-  py -3 -c "import sys; assert sys.version_info.major == 3" >> "%LOG%" 2>&1
+  py -3 -c "print('AETHERRA_PYTHON_OK')" > "%PROBE%" 2>> "%LOG%"
 ) else (
-  "%PYTHON%" -c "import sys; assert sys.version_info.major == 3" >> "%LOG%" 2>&1
+  "%PYTHON%" -c "print('AETHERRA_PYTHON_OK')" > "%PROBE%" 2>> "%LOG%"
 )
-exit /b %errorlevel%
+rem Check the actual output, not negative HRESULT errorlevel from a broken Windows launcher.
+if not exist "%PROBE%" goto rejected_python
+findstr /x /c:"AETHERRA_PYTHON_OK" "%PROBE%" >nul 2>nul
+if errorlevel 1 goto rejected_python
+del /q "%PROBE%" >nul 2>nul
+exit /b 0
+:rejected_python
+if exist "%PROBE%" del /q "%PROBE%" >nul 2>nul
+>> "%LOG%" echo Candidate rejected: no readiness token.
+exit /b 1
 
 :run
 echo Starting AETHERRA at http://127.0.0.1:8765/
