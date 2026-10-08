@@ -65,6 +65,7 @@ jobs:
           node --check renderer.js
           node --check planner.js
           node --check building.js
+          node --check world.js
           node tests/map-renderer.mjs
           node tests/depot-survival.mjs
           node tests/save-portability.mjs
@@ -76,3 +77,4 @@ jobs:
           node tests/trails.mjs
           node tests/daynight.mjs
           node tests/inventions.mjs
+          node tests/underground.mjs

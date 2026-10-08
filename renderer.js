@@ -90,8 +90,24 @@ function drawStructure(ctx,st,day){
   ctx.fillStyle='#b94358';for(let i=0;i<5;i++)ctx.fillRect(cx-14+i*7,cy-14+(i%2)*3,3,6);
  }
 }
+// Natural signs hinting at what lies underground; colours follow what the sign is made of.
+const SIGN_COLORS={green_stain:'#4fae8b',rusty_stream:'#c0603a',red_soil:'#b5523b',black_crumbs:'#2b2b2b',white_crust:'#f1efe6',glitter_sand:'#f3d36a',
+ heavy_dark_pebbles:'#3a3a40',black_glass:'#15151c',rotten_egg_smell:'#d8d36a',springy_ground:'#6a5a3a',knapped_shards:'#d8d2c0',sticky_mud:'#7a6a55',
+ night_glow:'#8ff0d0',humming_stones:'#a9b4c8',silver_frost:'#dfeaf5',crater_glass:'#6b4f7a',warm_ground:'#e0905a',whispering_reeds:'#9ccf8a',birds_avoid:'#b9b1a0'};
+function drawSign(ctx,sg,seed){
+ const S=52,h=hash(sg.x,sg.y,seed+9),px=(sg.x+.5)*S,py=(sg.y+.5)*S;
+ ctx.fillStyle=SIGN_COLORS[sg.sign]||'#d0d0d0';
+ for(let i=0;i<3;i++)ellipse(ctx,px+(i-1)*7+h*4,py+((i*5+h*7)%9)-4,3.4,2.2,ctx.fillStyle);
+ if(sg.sign==='night_glow'||sg.sign==='warm_ground')ellipse(ctx,px,py,12,8,'#ffe9a033');
+}
+// A place the settlement has confirmed holds something worth digging: a small golden marker.
+function drawSpot(ctx,sp){
+ const S=52,px=(sp.x+.5)*S,py=(sp.y+.5)*S;
+ ctx.fillStyle='#ffe08a';ctx.beginPath();ctx.moveTo(px,py-9);ctx.lineTo(px+6,py);ctx.lineTo(px,py+9);ctx.lineTo(px-6,py);ctx.closePath();ctx.fill();
+ ctx.strokeStyle='#7a5a1a';ctx.lineWidth=1.5;ctx.stroke();
+}
 function render(ctx,w){
- const {structures=[],trail,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy}=w;
+ const {signs=[],spots=[],structures=[],trail,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy}=w;
  const width=w.canvas.clientWidth,height=w.canvas.clientHeight;
  ctx.clearRect(0,0,width,height);
  ctx.save();ctx.translate(ox,oy);ctx.scale(scale,scale);
@@ -136,6 +152,8 @@ function render(ctx,w){
    if(wear>120){ctx.fillStyle='rgba(120,92,58,'+(.2+t*.3).toFixed(2)+')';ctx.fillRect(px+S*.18+h*S*.2,py+S*.3+h*S*.3,5,3)}
   }
  }
+ for(const sg of signs)if(sg.x>=left&&sg.x<right&&sg.y>=top&&sg.y<bottom)drawSign(ctx,sg,seed);
+ for(const sp of spots)if(sp.x>=left&&sp.x<right&&sp.y>=top&&sp.y<bottom)drawSpot(ctx,sp);
  // Everything standing on the map is drawn in one pass sorted by depth (y), so nearer objects overlap farther ones.
  const items=[];
  for(const b of berries){if(b.food>0&&b.x>=left&&b.x<right&&b.y>=top&&b.y<bottom)items.push({y:b.y+.65,draw:()=>drawBerry(ctx,b)})}
