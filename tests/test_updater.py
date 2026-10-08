@@ -16,7 +16,7 @@ class UpdaterTests(unittest.TestCase):
             archive = io.BytesIO()
             with zipfile.ZipFile(archive, "w") as z:
                 z.writestr("AETHERRA-test/index.html", "bad")
-            with patch.object(update, "BASE", root), patch.object(update, "latest_commit", return_value=("a" * 40, "test")), patch.object(update, "request_bytes", return_value=archive.getvalue()):
+            with patch.object(update, "BASE", root), patch.object(update, "latest_commit", return_value=("a" * 40, "test")), patch.object(update, "request_bytes", return_value=archive.getvalue()), patch.object(update, "verify_ci"):
                 with self.assertRaises(ValueError):
                     update.install()
             self.assertEqual((root / "index.html").read_text(encoding="utf-8"), "ORIGINAL")
