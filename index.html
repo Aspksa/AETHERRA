@@ -22,7 +22,7 @@ footer{padding-top:16px;color:#96aba0;font-size:12px}label{display:block;font-si
 <script>
 'use strict';
 const canvas=document.getElementById('world'),ctx=canvas.getContext('2d'),S=52,W=48,H=36;
-let seed=42,rng,tiles,agents,homes,trees,events,day,stock,paused=false,speed=1,scale=1,ox=0,oy=0,selected=null,uid=0,drag=null;
+let seed=42,rng,tiles,agents,homes,trees,events,day,stock,paused=false,speed=1,scale=1,ox=0,oy=0,selected=null,uid=0,drag=null,depot={x:22,y:17},reachable=new Uint8Array(W*H);
 function rand(){rng=(Math.imul(rng,1664525)+1013904223)>>>0;return rng/4294967296}
 function noise(x,y){return (Math.sin(x*.22+seed*.017)+Math.cos(y*.25-seed*.031)+Math.sin((x+y)*.15+seed*.09))/3}
 const idx=(x,y)=>y*W+x, inside=(x,y)=>x>=0&&x<W&&y>=0&&y<H;
@@ -30,12 +30,36 @@ function log(msg){events.unshift('День '+Math.floor(day)+': '+msg);events.le
 function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];events=[];day=0;stock={wood:0,food:150};selected=null;scale=.74;ox=100;oy=25;
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const river=Math.abs(y-(17+4*Math.sin(x*.17+seed*.03)))<1.35;const n=noise(x,y)+rand()*.19;const water=river||n<-.66;const kind=water?'water':n>.63?'stone':n<-.32?'sand':'grass';tiles.push(kind);
 if(kind==='grass'&&rand()<.34&&!(x>13&&x<30&&y>7&&y<28))trees.push({x,y,wood:3+Math.floor(rand()*4)})}
+// Choose the largest connected landmass. All settlers and resources use this component.
+const visited=new Uint8Array(W*H);let best=[];
+for(let origin=0;origin<tiles.length;origin++){
+ if(visited[origin]||tiles[origin]==='water')continue;
+ const cells=[origin];visited[origin]=1;
+ for(let head=0;head<cells.length;head++){
+  const at=cells[head],cx=at%W,cy=Math.floor(at/W);
+  for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+   const nx=cx+dx,ny=cy+dy;
+   if(!inside(nx,ny)||tiles[idx(nx,ny)]==='water'||visited[idx(nx,ny)])continue;
+   visited[idx(nx,ny)]=1;cells.push(idx(nx,ny));
+  }
+ }
+ if(cells.length>best.length)best=cells;
+}
+if(!best.length)throw Error('No habitable terrain');
+reachable=new Uint8Array(W*H);
+for(const cell of best)reachable[cell]=1;
+const grass=best.filter(i=>tiles[i]==='grass');
+if(!grass.length)throw Error('No grass in settlement area');
+const centerX=23,centerY=16;
+const dep=grass.reduce((a,b)=>Math.hypot(b%W-centerX,Math.floor(b/W)-centerY)<Math.hypot(a%W-centerX,Math.floor(a/W)-centerY)?b:a,grass[0]);
+depot={x:dep%W,y:Math.floor(dep/W)};
+const spawnCells=grass.filter(i=>Math.hypot(i%W-depot.x,Math.floor(i/W)-depot.y)<=7);
+const safeSpawn=spawnCells.length?spawnCells:grass;
 const names=['Артём','Мира','Лев','Алиса','Тим','Ника','Ян','Рада','Олег','Ева','Макс','Лада','Илья','Зоя','Роман','Вера','Марк','Ася','Данил','Соня'];
-for(let i=0;i<20;i++){let x,y,attempt=0;do{x=18+Math.floor(rand()*10);y=9+Math.floor(rand()*16);attempt++}while(tiles[idx(x,y)]!=='grass'&&attempt<100);
-if(!passable(x,y)){const safe=tiles.findIndex(k=>k==='grass');if(safe<0)throw Error('No habitable terrain');x=safe%W;y=Math.floor(safe/W)}
+for(let i=0;i<20;i++){const cell=safeSpawn[Math.floor(rand()*safeSpawn.length)],x=cell%W,y=Math.floor(cell/W);
 agents.push({id:uid++,name:names[i],x:x+.5,y:y+.5,age:18+Math.floor(rand()*35),state:'Исследует',target:null,carrying:0,energy:80+rand()*20,home:null})}
 log('Первые 20 жителей появились на планете');updatePanel()}
-function free(x,y){return inside(x,y)&&tiles[idx(x,y)]==='grass'&&!homes.some(h=>Math.abs(h.x-x)<2&&Math.abs(h.y-y)<2)}
+function free(x,y){return inside(x,y)&&reachable[idx(x,y)]===1&&tiles[idx(x,y)]==='grass'&&!(x===depot.x&&y===depot.y)&&!trees.some(t=>t.wood>0&&t.x===x&&t.y===y)&&!homes.some(h=>Math.abs(h.x-x)<2&&Math.abs(h.y-y)<2)}
 function passable(x,y){return inside(x,y)&&tiles[idx(x,y)]!=='water'}
 function findPath(sx,sy,tx,ty){
  if(!passable(sx,sy)||!passable(tx,ty))return null;
@@ -53,11 +77,11 @@ function findPath(sx,sy,tx,ty){
  return path.reverse();
 }
 function targetTree(a){
- if(a.tree&&a.tree.wood>0)return a.tree;
+ if(a.tree&&a.tree.wood>0&&reachable[idx(a.tree.x,a.tree.y)])return a.tree;
  a.tree=null;
  const sx=Math.floor(a.x),sy=Math.floor(a.y);if(!passable(sx,sy))return null;
  const prev=new Uint8Array(W*H),queue=[idx(sx,sy)];prev[queue[0]]=1;
- const live=new Map(trees.filter(t=>t.wood>0).map(t=>[idx(t.x,t.y),t]));
+ const live=new Map(trees.filter(t=>t.wood>0&&reachable[idx(t.x,t.y)]).map(t=>[idx(t.x,t.y),t]));
  for(let head=0;head<queue.length;head++){
   const at=queue[head];if(live.has(at)){a.tree=live.get(at);return a.tree}
   const x=at%W,y=Math.floor(at/W);
@@ -68,19 +92,19 @@ function targetTree(a){
  }
  return null;
 }
-function chooseSite(){let best=null,score=-Infinity;for(let i=0;i<60;i++){let x=12+Math.floor(rand()*23),y=6+Math.floor(rand()*25);if(!free(x,y))continue;const near=homes.length?Math.min(...homes.map(h=>Math.hypot(h.x-x,h.y-y))):Math.hypot(x-23,y-18);const s=-Math.abs(near-3)+rand()*3;if(s>score){score=s;best={x,y}}}return best}
+function chooseSite(){let best=null,score=-Infinity;for(let i=0;i<60;i++){let x=12+Math.floor(rand()*23),y=6+Math.floor(rand()*25);if(!free(x,y))continue;const near=homes.length?Math.min(...homes.map(h=>Math.hypot(h.x-x,h.y-y))):Math.hypot(x-depot.x,y-depot.y);const s=-Math.abs(near-3)+rand()*3;if(s>score){score=s;best={x,y}}}return best}
 function step(){day+=.065;
 for(const a of agents){a.energy=Math.max(0,a.energy-.015);if(a.energy<22){a.state='Отдыхает';a.energy=Math.min(100,a.energy+.18);continue}
-if(a.carrying){a.state='Доставляет древесину';move(a,22.5,17.5);if(Math.hypot(a.x-22.5,a.y-17.5)<1.1){stock.wood+=a.carrying;a.carrying=0}continue}
-const t=targetTree(a);if(t){a.state='Добывает древесину';move(a,t.x+.5,t.y+.5);if(Math.hypot(a.x-t.x-.5,a.y-t.y-.5)<.7){t.wood--;a.carrying++;if(t.wood===0){a.tree=null;log(a.name+' срубил дерево')}} }else{a.state='Отдыхает';a.energy=Math.min(100,a.energy+.07)}}
-if(stock.wood>=12&&homes.length<10){const site=chooseSite();if(site){stock.wood-=12;const h={id:uid++,x:site.x,y:site.y,level:1,owner:agents[homes.length%agents.length].name};homes.push(h);log(h.owner+' построил дом')} }
+if(a.carrying){a.state='Доставляет древесину';move(a,depot.x+.5,depot.y+.5);if(Math.hypot(a.x-depot.x-.5,a.y-depot.y-.5)<.4){stock.wood+=a.carrying;a.carrying=0}continue}
+const t=targetTree(a);if(t){a.state='Добывает древесину';move(a,t.x+.5,t.y+.5);if(Math.hypot(a.x-t.x-.5,a.y-t.y-.5)<.7){if(!findPath(t.x,t.y,depot.x,depot.y)){a.tree=null;continue}t.wood--;a.carrying++;if(t.wood===0){a.tree=null;log(a.name+' срубил дерево')}} }else{a.state='Отдыхает';a.energy=Math.min(100,a.energy+.07)}}
+if(stock.wood>=12&&homes.length<10){const site=chooseSite();if(site){stock.wood-=12;const owner=agents.find(a=>!a.home)||agents[homes.length%agents.length];const h={id:uid++,x:site.x,y:site.y,level:1,owner:owner.name};owner.home=h.id;homes.push(h);log(h.owner+' построил дом')} }
 if(day>2&&Math.floor(day)%5===0&&stock.food>0&&Math.floor(day*10)%10===0)stock.food--;
-if(trees.filter(t=>t.wood>0).length<25&&rand()<.03){const x=Math.floor(rand()*W),y=Math.floor(rand()*H);if(tiles[idx(x,y)]==='grass'&&!homes.some(h=>Math.hypot(h.x-x,h.y-y)<2))trees.push({x,y,wood:4})}
+if(trees.filter(t=>t.wood>0).length<25&&rand()<.03){const x=Math.floor(rand()*W),y=Math.floor(rand()*H);if(tiles[idx(x,y)]==='grass'&&reachable[idx(x,y)]&&!homes.some(h=>Math.hypot(h.x-x,h.y-y)<2))trees.push({x,y,wood:4})}
 }
 function move(a,x,y){
  const tx=Math.floor(x),ty=Math.floor(y),sx=Math.floor(a.x),sy=Math.floor(a.y);
  if(!passable(sx,sy)||!passable(tx,ty))return;
- if(!a.path||a.goal!==idx(tx,ty)||!a.path.length){
+ if(a.goal!==idx(tx,ty)||a.path===undefined){
   a.path=findPath(sx,sy,tx,ty);a.goal=idx(tx,ty);
  }
  if(!a.path||!a.path.length)return;
