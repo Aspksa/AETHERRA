@@ -96,7 +96,14 @@ def check():
 def verify_ci(sha):
     """Fail closed unless both required jobs succeeded on this exact commit."""
     url = f"https://api.github.com/repos/{REPO}/commits/{sha}/check-runs?per_page=100"
-    data = json.loads(request_bytes(url, 1024 * 1024).decode("utf-8"))
+    try:
+        data = json.loads(request_bytes(url, 1024 * 1024).decode("utf-8"))
+    except HTTPError as exc:
+        if exc.code in (403, 429):
+            raise RuntimeError("GitHub API ограничил проверку CI (HTTP %s). Версия найдена, но без подтверждения зелёных тестов установка безопасно заблокирована. Попробуйте позже." % exc.code) from None
+        raise RuntimeError("Не удалось проверить обязательные тесты GitHub: HTTP %s" % exc.code) from None
+    except (URLError, TimeoutError, OSError, ValueError) as exc:
+        raise RuntimeError("Не удалось проверить обязательные тесты GitHub. Установка заблокирована; повторите при работающем соединении.") from None
     results = {}
     for item in data.get("check_runs", []):
         name = item.get("name")
@@ -200,13 +207,14 @@ def install():
 
 def start_server_and_verify():
     """Use interpreter directly; don't re-enter a possibly rewritten BAT script."""
-    kwargs = {"cwd": str(BASE), "stdout": subprocess.DEVNULL,
-              "stderr": subprocess.DEVNULL}
+    kwargs = {"cwd": str(BASE)}
     if sys.platform == "win32":
-        kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     else:
         kwargs["start_new_session"] = True
-    child = subprocess.Popen([sys.executable, str(BASE / "server.py")], **kwargs)
+    with (BASE / "AETHERRA_SERVER.log").open("a", encoding="utf-8") as server_log:
+        child = subprocess.Popen([sys.executable, "-u", str(BASE / "server.py")],
+                                 stdout=server_log, stderr=subprocess.STDOUT, **kwargs)
     for _ in range(30):
         if child.poll() is not None:
             raise RuntimeError("Новый сервер завершился с ошибкой")
