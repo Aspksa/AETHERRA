@@ -56,3 +56,4 @@ jobs:
           node tests/server-mode.mjs
           node tests/world-economy.mjs
           node tests/survival-utility.mjs
+          node tests/world-saves.mjs

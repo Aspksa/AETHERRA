@@ -15,8 +15,8 @@ footer{padding-top:16px;color:#96aba0;font-size:12px}label{display:block;font-si
 @media(max-width:850px){.layout{grid-template-columns:1fr}aside{border:0;border-bottom:1px solid #30413d}main{order:-1;min-height:55vh}canvas{min-height:55vh}header{flex-wrap:wrap}}
 .world-update-mask{display:none;position:fixed;inset:0;background:#05100edc;z-index:40;align-items:center;justify-content:center;padding:20px}.world-update-mask.open{display:flex}.world-update{width:min(570px,100%);max-height:90vh;overflow-y:auto;background:#192926;border:1px solid #5d7767;border-radius:18px;padding:25px;box-shadow:0 20px 85px #0008}.world-update h2{font-size:23px;margin:0 0 7px}.world-update .muted{color:#a6b7ac;font-size:13px}.world-update .version-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0}.world-update .version{background:#253d35;border-radius:10px;padding:13px;overflow-wrap:anywhere}.world-update .version b{display:block;font-size:18px;color:#f3d99f;margin-top:6px}.world-update .release{background:#101e1b;border:1px solid #38564b;border-radius:12px;padding:14px;white-space:pre-wrap;line-height:1.5;font-size:13px;margin:12px 0}.world-update .actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}.world-update .actions button{flex:1}.world-update #worldUpdateInstall:disabled{opacity:.45;cursor:not-allowed}
 </style></head>
-<body><header><div><h1>AETHERRA</h1><small>ЖИВАЯ ВСЕЛЕННАЯ • Прототип 0.1.0</small></div><div class="controls"><button id="pause">⏸ Пауза</button><button id="faster">⏩ x1</button><button id="new">↻ Новый мир</button><button id="aiSettingsOpen">🧠 Разум мира</button><button id="checkUpdate">⚙ Обновление мира</button></div></header>
-<div class="world-update-mask" id="aiSettingsMask" role="dialog" aria-modal="true" aria-labelledby="aiSettingsTitle"><section class="world-update"><div style="display:flex;justify-content:space-between;align-items:center"><h2 id="aiSettingsTitle">🧠 Разум мира</h2><button id="aiSettingsClose" aria-label="Закрыть">✕</button></div><p>Провайдер: Cloud.ru · DeepSeek-V4-Flash</p><p>Ключ хранится только в памяти локального Python-сервера, до его остановки. Не сохраняется в браузере и GitHub.</p><label for="aiSecret">API-ключ Cloud.ru</label><input type="password" id="aiSecret" autocomplete="off" spellcheck="false" placeholder="Вставьте ключ" style="width:100%;padding:12px;background:#101e1b;color:#eee;border:1px solid #587869;border-radius:9px"><div class="actions"><button id="aiConnect">Подключить</button><button id="aiTest">Проверить</button><button id="aiDisconnect">Отключить</button></div><p id="aiStatus" role="status" aria-live="polite">Не подключено.</p><label for="aiQuestion">Вопрос советнику мира</label><textarea id="aiQuestion" maxlength="600" rows="3" style="width:100%;background:#101e1b;color:#eee;border:1px solid #587869;border-radius:9px;padding:10px">В нашей деревне 20 жителей. Что им стоит сделать в первую очередь для выживания?</textarea><button id="aiAsk">🧠 Спросить DeepSeek (платный API-запрос)</button><div class="release" id="aiAnswer" aria-live="polite">Ответ появится здесь. Пока это совет: ИИ не управляет жителями.</div><p>Запрос выполняется только по нажатию кнопки; автоматические решения жителей будут добавлены отдельно.</p></section></div><div class="world-update-mask" id="worldUpdateMask" role="dialog" aria-modal="true" aria-labelledby="worldUpdateTitle"><section class="world-update"><div style="display:flex;justify-content:space-between;align-items:start;gap:10px"><div><h2 id="worldUpdateTitle">🌍 Обновление мира</h2><div class="muted">Управление версиями AETHERRA через GitHub</div></div><button id="worldUpdateClose" aria-label="Закрыть">✕</button></div><div class="version-grid"><div class="version"><span class="muted">Установленная версия</span><b id="worldUpdateCurrent">—</b></div><div class="version"><span class="muted">Версия на GitHub</span><b id="worldUpdateLatest">—</b></div></div><div id="worldUpdateState" class="muted" role="status" aria-live="polite">Нажмите «Проверить» для проверки версии.</div><h3>Описание обновления</h3><div class="release" id="worldUpdateNotes">Описание появится после проверки GitHub.</div><a id="worldUpdateLink" href="https://github.com/Aspksa/AETHERRA/commits/main" target="_blank" rel="noopener noreferrer" style="color:#a8d2b3">Посмотреть историю изменений на GitHub ↗</a><div class="actions"><button id="worldUpdateCheck">🔎 Проверить</button><button id="worldUpdateInstall" disabled>⬇ Скачать и установить</button></div><p class="muted">Установка требует локального Python-сервера, интернета и подтверждения. Перед заменой файлов создаётся резервная копия. Несохранённое состояние текущего мира будет потеряно.</p></section></div><div class="layout"><aside><h2>🌍 Состояние мира</h2><div id="stats"></div><h3>Управление</h3><p>Колесо мыши — масштаб. Зажать и тянуть — перемещение. Нажать на жителя или дом — информация.</p><p>Жители сами выбирают дерево, добывают древесину и строят жилища. Постройки расходуют реальные ресурсы.</p><h3>Карта</h3><label>Seed мира <input id="seed" type="number" value="42" min="1" max="999999" style="width:100%;margin-top:6px;background:#102522;color:#eee;padding:9px;border:1px solid #527063;border-radius:8px"></label><footer>Автономная симуляция • Canvas 2D • Python server</footer></aside>
+<body><header><div><h1>AETHERRA</h1><small>ЖИВАЯ ВСЕЛЕННАЯ • v0.3.1</small></div><div class="controls"><button id="pause">⏸ Пауза</button><button id="faster">⏩ x1</button><button id="new">↻ Новый мир</button><button id="saveWorld">💾 Сохранить</button><button id="loadWorld">📂 Загрузить</button><button id="aiSettingsOpen">🧠 Разум мира</button><button id="checkUpdate">⚙ Обновление мира</button></div></header>
+<div class="world-update-mask" id="aiSettingsMask" role="dialog" aria-modal="true" aria-labelledby="aiSettingsTitle"><section class="world-update"><div style="display:flex;justify-content:space-between;align-items:center"><h2 id="aiSettingsTitle">🧠 Разум мира</h2><button id="aiSettingsClose" aria-label="Закрыть">✕</button></div><p>Провайдер: Cloud.ru · DeepSeek-V4-Flash</p><p>Ключ хранится только в памяти локального Python-сервера, до его остановки. Не сохраняется в браузере и GitHub.</p><label for="aiSecret">API-ключ Cloud.ru</label><input type="password" id="aiSecret" autocomplete="off" spellcheck="false" placeholder="Вставьте ключ" style="width:100%;padding:12px;background:#101e1b;color:#eee;border:1px solid #587869;border-radius:9px"><div class="actions"><button id="aiConnect">Подключить</button><button id="aiTest">Проверить</button><button id="aiDisconnect">Отключить</button></div><p id="aiStatus" role="status" aria-live="polite">Не подключено.</p><label for="aiQuestion">Вопрос советнику мира</label><textarea id="aiQuestion" maxlength="600" rows="3" style="width:100%;background:#101e1b;color:#eee;border:1px solid #587869;border-radius:9px;padding:10px">В нашей деревне 20 жителей. Что им стоит сделать в первую очередь для выживания?</textarea><button id="aiAsk">🧠 Спросить DeepSeek (платный API-запрос)</button><div class="release" id="aiAnswer" aria-live="polite">Ответ появится здесь. Пока это совет: ИИ не управляет жителями.</div><p>Запрос выполняется только по нажатию кнопки; автоматические решения жителей будут добавлены отдельно.</p></section></div><div class="world-update-mask" id="worldUpdateMask" role="dialog" aria-modal="true" aria-labelledby="worldUpdateTitle"><section class="world-update"><div style="display:flex;justify-content:space-between;align-items:start;gap:10px"><div><h2 id="worldUpdateTitle">🌍 Обновление мира</h2><div class="muted">Управление версиями AETHERRA через GitHub</div></div><button id="worldUpdateClose" aria-label="Закрыть">✕</button></div><div class="version-grid"><div class="version"><span class="muted">Установленная версия</span><b id="worldUpdateCurrent">—</b></div><div class="version"><span class="muted">Версия на GitHub</span><b id="worldUpdateLatest">—</b></div></div><div id="worldUpdateState" class="muted" role="status" aria-live="polite">Нажмите «Проверить» для проверки версии.</div><h3>Описание обновления</h3><div class="release" id="worldUpdateNotes">Описание появится после проверки GitHub.</div><a id="worldUpdateLink" href="https://github.com/Aspksa/AETHERRA/commits/main" target="_blank" rel="noopener noreferrer" style="color:#a8d2b3">Посмотреть историю изменений на GitHub ↗</a><div class="actions"><button id="worldUpdateCheck">🔎 Проверить</button><button id="worldUpdateInstall" disabled>⬇ Скачать и установить</button></div><p class="muted">Установка требует локального Python-сервера, интернета и подтверждения. Перед заменой файлов создаётся резервная копия. Перед обновлением игра сохраняет мир в хранилище браузера.</p></section></div><div class="layout"><aside><h2>🌍 Состояние мира</h2><div id="stats"></div><h3>Управление</h3><p>Колесо мыши — масштаб. Зажать и тянуть — перемещение. Нажать на жителя или дом — информация.</p><p>Жители сами выбирают дерево, добывают древесину и строят жилища. Постройки расходуют реальные ресурсы.</p><h3>💾 Память планеты</h3><p id="saveStatus" role="status" aria-live="polite">Сохранение выполняется локально в браузере. Автосохранение раз в 30 секунд.</p><h3>Карта</h3><label>Seed мира <input id="seed" type="number" value="42" min="1" max="999999" style="width:100%;margin-top:6px;background:#102522;color:#eee;padding:9px;border:1px solid #527063;border-radius:8px"></label><footer>Автономная симуляция • Canvas 2D • Python server</footer></aside>
 <main><canvas id="world"></canvas><div class="overlay">🟢 Автономная симуляция · кликай по объектам · масштабируй карту</div></main>
 <aside><h2>👤 Выбранный объект</h2><div class="selected" id="selected">Выбери жителя или дом на карте.</div><h3>📜 События мира</h3><div id="events"></div></aside></div>
 <script>
@@ -188,6 +188,65 @@ function move(a,x,y){
  const step=Math.min(.048,len),nx=a.x+dx/len*step,ny=a.y+dy/len*step;
  if(passable(Math.floor(nx),Math.floor(ny))){a.x=nx;a.y=ny}else{a.path=null}
 }
+
+const SAVE_KEY='AETHERRA_WORLD_V1';
+const SAVE_SCHEMA=1;
+function worldSnapshot(){
+ return {schema:SAVE_SCHEMA,seed,rng,uid,day,stock:{...stock},tiles:[...tiles],
+  agents:agents.map(a=>({...a,tree:null,foraging:null,path:a.path?a.path.map(p=>({...p})):a.path,goal:a.goal??null,
+   treePos:a.tree?{x:a.tree.x,y:a.tree.y}:null,
+   foragePos:a.foraging?{x:a.foraging.x,y:a.foraging.y}:null})),
+  homes:homes.map(h=>({...h})),trees:trees.map(t=>({...t})),
+  berries:berries.map(b=>({...b})),events:[...events],depot:{...depot},
+  reachable:Array.from(reachable)};
+}
+function validateSnapshot(data){
+ if(!data||data.schema!==SAVE_SCHEMA)throw Error('Неподдерживаемый формат сохранения');
+ if(!Array.isArray(data.tiles)||data.tiles.length!==W*H||!data.tiles.every(t=>['water','grass','sand','stone'].includes(t)))throw Error('Повреждена карта');
+ if(!Array.isArray(data.reachable)||data.reachable.length!==W*H||!data.reachable.every(n=>n===0||n===1))throw Error('Повреждена карта проходимости');
+ if(!Array.isArray(data.agents)||data.agents.length>500||!Array.isArray(data.homes)||data.homes.length>300||!Array.isArray(data.trees)||data.trees.length>W*H||!Array.isArray(data.berries)||data.berries.length>W*H)throw Error('Повреждены объекты мира');
+ if(!data.stock||!Number.isFinite(data.stock.wood)||!Number.isFinite(data.stock.food)||data.stock.wood<0||data.stock.food<0)throw Error('Некорректные ресурсы');
+ if(!Number.isFinite(data.day)||data.day<0||!Number.isInteger(data.rng)||data.rng<0||data.rng>4294967295||!Number.isInteger(data.uid)||data.uid<0||!Number.isFinite(data.seed))throw Error('Некорректное время или генератор');
+ const pos=p=>p&&Number.isInteger(p.x)&&Number.isInteger(p.y)&&inside(p.x,p.y);
+ if(!pos(data.depot)||data.reachable[idx(data.depot.x,data.depot.y)]!==1)throw Error('Некорректный склад');
+ if(!data.agents.every(a=>Number.isInteger(a.id)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&inside(Math.floor(a.x),Math.floor(a.y))&&Number.isFinite(a.hunger)&&a.hunger>=0&&a.hunger<=100&&Number.isFinite(a.health)&&a.health>=0&&a.health<=100&&Number.isFinite(a.energy)&&a.energy>=0&&a.energy<=100&&Number.isFinite(a.carrying)&&a.carrying>=0&&a.experience&&Number.isFinite(a.experience.food)&&Number.isFinite(a.experience.wood)&&Array.isArray(a.memory)&&a.memory.length<=6))throw Error('Повреждены данные жителей');
+ if(!data.homes.every(h=>pos(h)&&Number.isInteger(h.id))||!data.trees.every(t=>pos(t)&&Number.isFinite(t.wood)&&t.wood>=0)||!data.berries.every(b=>pos(b)&&Number.isFinite(b.food)&&b.food>=0))throw Error('Повреждены здания или природные ресурсы');
+ if(!Array.isArray(data.events)||data.events.length>8||!data.events.every(e=>typeof e==='string'&&e.length<500))throw Error('Повреждена история мира');
+}
+function restoreWorld(data){
+ validateSnapshot(data); // Never mutate the running world before validation.
+ seed=data.seed;rng=data.rng;uid=data.uid;day=data.day;stock={...data.stock};
+ tiles=[...data.tiles];homes=data.homes.map(h=>({...h}));trees=data.trees.map(t=>({...t}));
+ berries=data.berries.map(b=>({...b}));events=[...data.events];depot={...data.depot};
+ reachable=Uint8Array.from(data.reachable);
+ agents=data.agents.map(a=>{
+  const copy={...a,memory:[...a.memory],experience:{...a.experience},path:a.path?a.path.map(p=>({...p})):undefined,goal:a.goal??undefined};
+  copy.tree=copy.treePos?trees.find(t=>t.x===copy.treePos.x&&t.y===copy.treePos.y)||null:null;
+  copy.foraging=copy.foragePos?berries.find(b=>b.x===copy.foragePos.x&&b.y===copy.foragePos.y)||null:null;
+  delete copy.treePos;delete copy.foragePos;
+  return copy;
+ });
+ selected=null;document.getElementById('seed').value=String(seed);
+ document.getElementById('events').innerHTML=events.map(e=>'<div class="event">'+e+'</div>').join('');
+ updatePanel();
+}
+function saveWorld(){
+ try{
+  localStorage.setItem(SAVE_KEY,JSON.stringify(worldSnapshot()));
+  document.getElementById('saveStatus').textContent='Мир сохранён: день '+Math.floor(day)+'.';
+  return true;
+ }catch(e){document.getElementById('saveStatus').textContent='Ошибка сохранения: '+e.message;return false}
+}
+function loadWorld(){
+ try{
+  const raw=localStorage.getItem(SAVE_KEY);
+  if(!raw)throw Error('Сохранение ещё не создано');
+  if(raw.length>5*1024*1024)throw Error('Файл сохранения слишком большой');
+  restoreWorld(JSON.parse(raw));
+  document.getElementById('saveStatus').textContent='Мир восстановлен: день '+Math.floor(day)+'.';
+  return true;
+ }catch(e){document.getElementById('saveStatus').textContent='Ошибка загрузки: '+e.message;return false}
+}
 function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
 if(selected){let o=selected.type==='agent'?agents.find(a=>a.id===selected.id):homes.find(h=>h.id===selected.id);
 document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+o.name+'</b><br>Возраст: '+o.age+'<br>Действие: '+o.state+'<br>Энергия: '+Math.round(o.energy)+'%<br>Голод: '+Math.round(o.hunger)+'%<br>Здоровье: '+Math.round(o.health)+'%<br>Навык добычи: '+o.experience.wood+'<br>Сбор пищи: '+o.experience.food+'<br>Память: '+o.memory.slice(0,3).join('; ')+'<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+o.owner+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
@@ -207,7 +266,9 @@ canvas.addEventListener('pointermove',e=>{if(!drag)return;if(Math.hypot(e.client
 canvas.addEventListener('pointerup',e=>{if(drag&&!drag.moved)clickAt(e);drag=null});
 document.getElementById('pause').onclick=()=>{paused=!paused;document.getElementById('pause').textContent=paused?'▶ Продолжить':'⏸ Пауза'};
 document.getElementById('faster').onclick=()=>{speed=speed===1?3:speed===3?8:1;document.getElementById('faster').textContent='⏩ x'+speed};
-document.getElementById('new').onclick=createWorld;
+document.getElementById('new').onclick=()=>{if(confirm('Создать новый мир? Текущее несохранённое состояние будет потеряно.'))createWorld()};
+document.getElementById('saveWorld').onclick=saveWorld;
+document.getElementById('loadWorld').onclick=()=>{if(confirm('Загрузить сохранение и заменить текущий мир?'))loadWorld()};
 const aiMask=document.getElementById('aiSettingsMask'),aiState=document.getElementById('aiStatus');
 document.getElementById('aiSettingsOpen').onclick=async()=>{aiMask.classList.add('open');await aiStatusRefresh()};
 document.getElementById('aiSettingsClose').onclick=()=>aiMask.classList.remove('open');
@@ -272,7 +333,8 @@ async function worldUpdateCheck(){
 document.getElementById('worldUpdateCheck').onclick=()=>{worldUpdateState.textContent='Начинаем проверку...';worldUpdateCheck()};
 worldUpdateInstall.onclick=async()=>{
  if(!worldUpdateInfo||!worldUpdateInfo.update_available)return;
- if(!confirm('Установить обновление AETHERRA? Текущий мир пока не сохраняется и будет перезапущен.'))return;
+ if(!confirm('Установить обновление AETHERRA? Сначала будет сохранён текущий мир.'))return;
+ if(!saveWorld()){worldUpdateState.textContent='Установка отменена: мир не удалось сохранить.';return}
  worldUpdateInstall.disabled=true;
  worldUpdateState.textContent='Начинаем установку. Не закрывайте консоль сервера.';
  try{
@@ -289,5 +351,5 @@ if(location.protocol==='file:'){
  alertBox.textContent='⚠ AETHERRA открыта без Python-сервера: Cloud.ru и проверка обновлений недоступны. Запустите AETHERRA.bat и используйте адрес http://127.0.0.1:8765/';
  document.querySelector('header').insertAdjacentElement('afterend',alertBox);
 }
-window.addEventListener('resize',size);size();createWorld();draw();setInterval(()=>{if(!paused)for(let i=0;i<speed;i++)step();updatePanel()},120);
+window.addEventListener('resize',size);size();createWorld();loadWorld();draw();setInterval(()=>{if(!paused)for(let i=0;i<speed;i++)step();updatePanel()},120);setInterval(saveWorld,30000);
 </script></body></html>
