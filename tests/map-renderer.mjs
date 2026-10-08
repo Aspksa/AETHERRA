@@ -7,7 +7,7 @@ const context={Math};vm.createContext(context);vm.runInContext(source,context);
 const render=context.AetherraRenderer.render,hash=context.AetherraRenderer.hash;
 assert.equal(hash(3,5,77),hash(3,5,77),'terrain texture must be deterministic');
 const calls={};
-const ctx=new Proxy({}, {get(_t,p){if(p==='beginPath'||p==='fill'||p==='stroke'||p==='save'||p==='restore')return ()=>{calls[p]=(calls[p]||0)+1};if(p==='fillRect'||p==='ellipse'||p==='arc'||p==='moveTo'||p==='lineTo'||p==='strokeRect'||p==='translate'||p==='scale'||p==='clearRect'||p==='fillText')return ()=>{calls[p]=(calls[p]||0)+1};return null},set(){return true}});
+const ctx=new Proxy({}, {get(_t,p){if(p==='beginPath'||p==='closePath'||p==='fill'||p==='stroke'||p==='save'||p==='restore')return ()=>{calls[p]=(calls[p]||0)+1};if(p==='fillRect'||p==='ellipse'||p==='arc'||p==='moveTo'||p==='lineTo'||p==='strokeRect'||p==='translate'||p==='scale'||p==='clearRect'||p==='fillText')return ()=>{calls[p]=(calls[p]||0)+1};return null},set(){return true}});
 const W=48,H=36,tiles=Array.from({length:W*H},(_,i)=>i%7===0?'water':'grass');
 const world={canvas:{clientWidth:640,clientHeight:480},tiles,trees:[{x:3,y:4,wood:5}],berries:[{x:2,y:3,food:4}],homes:[{x:4,y:6,id:9}],agents:[{x:5,y:5,id:1,health:100,hunger:20}],selected:null,seed:42,day:5,depot:{x:6,y:6},W,H,S:52,scale:.8,ox:0,oy:0};
 const before=JSON.stringify(world);
