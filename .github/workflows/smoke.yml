@@ -64,3 +64,4 @@ jobs:
           node tests/depot-survival.mjs
           node tests/save-portability.mjs
           node tests/demography.mjs
+          node tests/home-rest.mjs
