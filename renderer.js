@@ -77,7 +77,11 @@ function drawAgent(ctx,a){
 function drawStructure(ctx,st,day){
  const S=52,cx=(st.x+.5)*S,cy=(st.y+.6)*S,stone=st.material==='stone';
  ellipse(ctx,cx,cy+8,20,7,'#142a2059');
- if(st.fn==='warmth'){
+ if(st.fn==='shaft'){
+  ellipse(ctx,cx,cy+2,16,8,'#3b2f26');
+  ctx.fillStyle='#6a4e33';ctx.fillRect(cx-15,cy-16,4,24);ctx.fillRect(cx+11,cy-16,4,24);ctx.fillRect(cx-17,cy-18,34,4);
+  ctx.fillStyle='#16110d';ctx.fillRect(cx-9,cy-2,18,9);
+ }else if(st.fn==='warmth'){
   ellipse(ctx,cx,cy+2,15,8,stone?'#7d867d':'#5b4230');
   ellipse(ctx,cx,cy,11,5,'#2a2420');
   const f=Math.sin(day*40+st.x*3)*1.5;

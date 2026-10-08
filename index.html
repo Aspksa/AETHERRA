@@ -24,6 +24,7 @@ footer{padding-top:16px;color:#96aba0;font-size:12px}label{display:block;font-si
 <script src="planner.js"></script>
 <script src="building.js"></script>
 <script src="world.js"></script>
+<script src="tech.js"></script>
 <script>
 'use strict';
 const canvas=document.getElementById('world'),ctx=canvas.getContext('2d'),S=52,W=48,H=36;
@@ -35,7 +36,7 @@ function noise(x,y){return (Math.sin(x*.22+seed*.017)+Math.cos(y*.25-seed*.031)+
 let lastBirthCycle=0;
 const idx=(x,y)=>y*W+x, inside=(x,y)=>x>=0&&x<W&&y>=0&&y<H;
 function log(msg){events.unshift('День '+Math.floor(day)+': '+msg);events.length=Math.min(events.length,8);document.getElementById('events').innerHTML=events.map(e=>'<div class="event">'+escapeHtml(e)+'</div>').join('')}
-function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];berries=[];events=[];day=0;lastBirthCycle=0;trail=new Array(W*H).fill(0);deposits=[];signs=[];inventions=[];structures=[];spoilAcc=0;stock={wood:0,food:100};selected=null;if(typeof centerCamera==='function')centerCamera();
+function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];berries=[];events=[];day=0;lastBirthCycle=0;trail=new Array(W*H).fill(0);explored=new Array(GRID_W*GRID_H).fill(0);deposits=[];signs=[];concepts=[];techCounts={};toolbox=[];inventions=[];structures=[];spoilAcc=0;stock={wood:0,food:100};selected=null;if(typeof centerCamera==='function')centerCamera();
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const river=Math.abs(y-(17+4*Math.sin(x*.17+seed*.03)))<1.35;const n=noise(x,y)+rand()*.19;const water=river||n<-.66;const kind=water?'water':n>.63?'stone':n<-.32?'sand':'grass';tiles.push(kind);
 if(kind==='grass'&&rand()<.34&&!(x>13&&x<30&&y>7&&y<28))trees.push({x,y,wood:3+Math.floor(rand()*4)})}
 // Choose the largest connected landmass. All settlers and resources use this component.
@@ -129,12 +130,13 @@ function remember(a,message){
 }
 // Underground (assets/world-spec.json): deposits hidden below the surface, signs that hint at them, and what residents
 // have learned. Without the spec file (for example when the page is opened straight from disk) the game runs without it.
-let worldSpec=null,deposits=[],signs=[];
+let worldSpec=null,deposits=[],signs=[],concepts=[],techCounts={},toolbox=[];
+const hasTech=()=>typeof AetherraTech!=='undefined'&&typeof AetherraWorld!=='undefined'&&worldSpec!==null;
 const hasWorld=()=>typeof AetherraWorld!=='undefined'&&worldSpec!==null;
 const resInfo=id=>worldSpec&&worldSpec.resources.find(r=>r.id===id);
 function generateUnderground(){
  if(!hasWorld())return;
- const g=AetherraWorld.generate(worldSpec,tiles,trees,W,H,seed);
+ const g=AetherraWorld.generate(worldSpec,tiles,trees,W,H,seed,reachable);
  deposits=g.deposits.filter(d=>reachable[idx(d.x,d.y)]===1);signs=g.signs.filter(t=>reachable[idx(t.x,t.y)]===1);
 }
 function attachSpec(spec){
@@ -143,7 +145,8 @@ function attachSpec(spec){
  if(!deposits.length&&!signs.length&&tiles.length)generateUnderground();
  return true;
 }
-const HUMAN_CONCEPTS=()=>worldSpec.concepts.filter(c=>c.known_at_start).map(c=>c.id);
+const HUMAN_CONCEPTS=()=>worldSpec.concepts.filter(c=>c.known_at_start).map(c=>c.id).concat(concepts.map(c=>c.id));
+const knownConcept=id=>HUMAN_CONCEPTS().includes(id);
 const knowOf=a=>a.know||(a.know={});
 const knows=(a,res)=>{const r=resInfo(res);if(r&&r.known_at_start)return true;const k=a.know&&a.know[res];return !!k&&k.conf>=.6};
 function settlementKnows(res){return agents.some(a=>a.health>0&&knows(a,res))}
@@ -162,7 +165,7 @@ function noticeSigns(a){
  const night=isNight(),human=worldSpec.races.find(r=>r.id==='human'),concepts=HUMAN_CONCEPTS();
  for(const sg of signs){
   if(Math.abs(sg.x+.5-a.x)>3||Math.abs(sg.y+.5-a.y)>3||!AetherraWorld.signVisible(worldSpec,sg.sign,night))continue;
-  const cands=AetherraWorld.resourcesForSign(worldSpec,sg.sign).filter(r=>r.discovery&&r.min_tool==='hands'&&(r.discovery.needs_concepts||[]).every(c=>concepts.includes(c)));
+  const cands=AetherraWorld.resourcesForSign(worldSpec,sg.sign).filter(r=>r.discovery&&(r.discovery.needs_concepts||[]).every(c=>concepts.includes(c)));
   if(!cands.length)continue;
   let res=cands[Math.floor(rand()*cands.length)];
   if(sg.real){const near=cands.filter(r=>deposits.some(d=>d.res===r.id&&Math.abs(d.x-sg.x)<=4&&Math.abs(d.y-sg.y)<=4));if(near.length)res=near[Math.floor(rand()*near.length)]}
@@ -171,22 +174,34 @@ function noticeSigns(a){
   learnSignLink(a,res,sg);break;
  }
 }
-// Very curious residents roam up to 16 tiles from the depot; walking is how signs get noticed.
+// Exploration: curious residents walk to the least visited part of the map (a coarse 8x6 grid counts visits), which is how
+// distant signs eventually get noticed. The settlement explores more eagerly while it still lacks clay or copper.
+const GRID_W=8,GRID_H=6;
+let explored=new Array(GRID_W*GRID_H).fill(0);
+const gridCell=(x,y)=>Math.min(GRID_H-1,Math.floor(y/(H/GRID_H)))*GRID_W+Math.min(GRID_W-1,Math.floor(x/(W/GRID_W)));
+function markExplored(a){const i=gridCell(a.x,a.y);if(explored[i]<255)explored[i]++}
 function planExplore(a){
- if(!hasWorld()||a.age<16||a.explore||a.dig||a.extract||a.plan||a.carrying||trait(a,'curiosity')<.75||rand()>.04||stock.food<agents.length*3)return; // only the very curious, and never in a famine
- for(let i=0;i<20;i++){
-  const x=Math.floor(depot.x+(rand()-.5)*32),y=Math.floor(depot.y+(rand()-.5)*32);
-  if(inside(x,y)&&reachable[idx(x,y)]===1){a.explore={x,y,t:0};return}
+ if(!hasWorld()||a.age<16||a.explore||a.dig||a.extract||a.craft||a.shaft||a.plan||a.carrying||stock.food<agents.length*3)return;
+ const lacking=!settlementKnows('clay')||!settlementKnows('copper');
+ const curiosity=trait(a,'curiosity');
+ if(curiosity<(lacking?.6:.75)||rand()>(lacking?.06:.03)||agents.filter(o=>o.explore).length>=2)return; // at most two explorers at a time
+ let best=null,bestVisits=Infinity;
+ for(let i=0;i<14;i++){
+  const x=Math.floor(depot.x+(rand()-.5)*44),y=Math.floor(depot.y+(rand()-.5)*34);
+  if(!inside(x,y)||reachable[idx(x,y)]!==1)continue;
+  const v=explored[gridCell(x,y)]+Math.hypot(x-depot.x,y-depot.y)*.4;
+  if(v<bestVisits){bestVisits=v;best={x,y,t:0}}
  }
+ if(best)a.explore=best;
 }
 function exploreStep(a){
  const t=a.explore;a.state='Исследует окрестности';move(a,t.x+.5,t.y+.5);
- if(Math.hypot(a.x-t.x-.5,a.y-t.y-.5)<1||++t.t>250){a.explore=undefined;a.path=undefined;return false}
+ if(Math.hypot(a.x-t.x-.5,a.y-t.y-.5)<1||++t.t>300){a.explore=undefined;a.path=undefined;return false}
  return true;
 }
 // A test pit at a remembered place reveals layers 0..1: a find confirms the belief, an empty pit weakens it.
 function planDig(a){
- if(!hasWorld()||a.age<16||a.dig||a.extract||a.plan||!a.know||rand()>.35)return;
+ if(!hasWorld()||a.age<16||a.dig||a.extract||a.craft||a.shaft||a.plan||!a.know||rand()>.35)return;
  for(const [id,k] of Object.entries(a.know)){
   if(k.conf>=.15&&k.conf<.6&&k.places.length){const p=k.places[0];a.dig={res:id,x:p.x,y:p.y,left:-1};return}
  }
@@ -201,7 +216,7 @@ function digStep(a){
   return true;
  }
  if(--d.left>0)return true;
- const found=deposits.find(t=>t.res===d.res&&t.depth<=1&&Math.abs(t.x-d.x)<=2&&Math.abs(t.y-d.y)<=2);
+ const found=deposits.find(t=>t.res===d.res&&t.depth<=1&&Math.abs(t.x-d.x)<=3&&Math.abs(t.y-d.y)<=3);
  const was=k.conf;
  if(found){k.conf=Math.min(1,k.conf+.25*1.5);k.places=[{x:found.x,y:found.y}]}
  else{k.conf=Math.max(0,k.conf-.1);k.places.shift()}
@@ -219,71 +234,178 @@ function teachPair(a,b){
   if(mine.conf<k.conf*.6){mine.conf=k.conf*.6;mine.places=k.places.map(p=>({...p}));return}
  }
 }
+// Tools lent out to residents on a job still count as owned.
+const toolCount=id=>toolbox.filter(t=>t.id===id).length+agents.filter(a=>a.health>0&&a.tool&&a.tool.id===id).length;
 const EXTRACT_NEED={
- stone:()=>{const inv=pendingInvention();return !!inv&&inv.material==='stone'&&(stock.stone||0)<6},flint:()=>(stock.flint||0)<6,clay:()=>(stock.clay||0)<8,
- salt:()=>stock.food>40&&(stock.salt||0)<10,gold:a=>trait(a,'curiosity')>.7&&(stock.gold||0)<5
+ // stone: for stone structures, for the first stone tools, and for a mine shaft
+ stone:()=>{const inv=pendingInvention();return (!!inv&&inv.material==='stone'&&(stock.stone||0)<6)||(hasTech()&&toolCount('stone')<2&&(stock.stone||0)<2)||(shaftWanted()!==null&&(stock.stone||0)<4)},
+ flint:()=>hasTech()&&((knownConcept('concept_knapping')?(stock.flint||0)<3:(stock.flint||0)<6)),
+ clay:()=>(stock.clay||0)<8,
+ salt:()=>stock.food>40&&(stock.salt||0)<10,gold:a=>trait(a,'curiosity')>.7&&(stock.gold||0)<5,
+ // metals: collect a little copper to experiment with; once smelting is known, enough for tools and bronze
+ copper:()=>hasTech()&&((stock.copper||0)<4||(knownConcept('concept_smelting')&&(stock.copper||0)<9)),
+ tin:()=>hasTech()&&knownConcept('concept_smelting')&&(stock.tin||0)<4
 };
-function daysPerUnit(r,method,depth,skill){
- const power=.5; // bare hands: tools are not made yet
+function daysPerUnit(r,method,depth,skill,power){
  return method.base_days_per_unit*r.hardness*(1+.6*depth)/(power*(1+skill/100));
 }
-function chooseMethod(r,depth){
+const hasShaftNear=(x,y)=>structures.some(st=>st.fn==='shaft'&&Math.hypot(st.x-x,st.y-y)<=3);
+function chooseMethod(r,depth,dep){
  let best=null;
  for(const m of r.methods){
   const spec=worldSpec.extraction_methods.find(e=>e.id===m);
-  if(!spec||spec.requires_structure||depth<spec.depth[0]||depth>spec.depth[1])continue;
+  if(!spec||depth<spec.depth[0]||depth>spec.depth[1])continue;
+  if(spec.requires_structure&&!(dep&&hasShaftNear(dep.x,dep.y)))continue;
   if(!best||spec.base_days_per_unit<best.base_days_per_unit)best=spec;
  }
  return best;
 }
 function planExtraction(a){
- if(!hasWorld()||a.age<16||a.extract||a.dig||a.plan||a.carrying||rand()>.3)return;
+ if(!hasWorld()||a.age<16||a.extract||a.dig||a.craft||a.shaft||a.plan||a.carrying||rand()>.3)return;
  // Mining is a luxury: only while food and wood are comfortable, and never by more than two residents at once.
  const living=agents.filter(p=>p.health>0).length;
  if(stock.food<living*4||stock.wood<6||agents.filter(p=>p.extract).length>=2)return;
  let pick=null;
  for(const id of Object.keys(EXTRACT_NEED)){
   const r=resInfo(id);
-  if(!r||r.min_tool!=='hands'||!knows(a,id)||!EXTRACT_NEED[id](a))continue;
+  if(!r||!knows(a,id)||!EXTRACT_NEED[id](a))continue;
+  const toolIdx=hasTech()?AetherraTech.pickTool(worldSpec,toolbox,r.min_tool):-1;
+  if(r.min_tool!=='hands'&&toolIdx<0)continue;
   const k=a.know&&a.know[id];
   let best=null,bestDist=Infinity;
   for(const t of deposits){
-   if(t.res!==id||t.amount<=0||!chooseMethod(r,t.depth))continue;
+   if(t.res!==id||t.amount<=0||!chooseMethod(r,t.depth,t))continue;
    if(!r.known_at_start&&!(k&&k.places.some(p=>Math.abs(p.x-t.x)<=2&&Math.abs(p.y-t.y)<=2)))continue;
    const dist=Math.abs(t.x+.5-a.x)+Math.abs(t.y+.5-a.y);
    if(dist<bestDist){bestDist=dist;best=t}
   }
   if(best&&(!pick||bestDist<pick.dist))pick={res:id,x:best.x,y:best.y,depth:best.depth,dist:bestDist};
  }
- if(pick)a.extract={res:pick.res,x:pick.x,y:pick.y,depth:pick.depth,phase:'dig',prog:0,n:0};
+ if(pick){
+  const r=resInfo(pick.res),idx=hasTech()?AetherraTech.pickTool(worldSpec,toolbox,r.min_tool):-1;
+  if(idx>=0)a.tool=toolbox.splice(idx,1)[0];
+  a.extract={res:pick.res,x:pick.x,y:pick.y,depth:pick.depth,phase:'dig',prog:0,n:0};
+ }
 }
+function releaseTool(a){if(a.tool&&a.tool.dur>0)toolbox.push(a.tool);a.tool=undefined}
+function endExtract(a){releaseTool(a);a.extract=undefined;a.path=undefined}
+function toHaul(a,e){e.phase='haul';releaseTool(a)}
 function extractStep(a){
  const e=a.extract,r=resInfo(e.res);
- if(!r){a.extract=undefined;return false}
+ if(!r){endExtract(a);return false}
  if(e.phase==='haul'){
   a.state='Несёт: '+r.name_ru;move(a,depot.x+.5,depot.y+.5);
-  if(Math.hypot(a.x-depot.x-.5,a.y-depot.y-.5)<.45){stock[e.res]=(stock[e.res]||0)+e.n;a.extract=undefined;a.path=undefined}
+  if(Math.hypot(a.x-depot.x-.5,a.y-depot.y-.5)<.45){stock[e.res]=(stock[e.res]||0)+e.n;endExtract(a)}
   return true;
  }
  const t=deposits.find(d=>d.res===e.res&&d.x===e.x&&d.y===e.y&&d.depth===e.depth);
- if(!t||t.amount<=0){if(e.n>0){e.phase='haul';return true}a.extract=undefined;return false}
- const m=chooseMethod(r,t.depth);
- if(!m){a.extract=undefined;return false}
- a.state=(m.id==='pan'?'Промывает: ':'Добывает: ')+r.name_ru;
+ if(!t||t.amount<=0){if(e.n>0){toHaul(a,e);return true}endExtract(a);return false}
+ const m=chooseMethod(r,t.depth,t);
+ if(!m||r.min_tool!=='hands'&&!a.tool){if(e.n>0){toHaul(a,e);return true}endExtract(a);return false}
+ a.state=(m.id==='pan'?'Промывает: ':m.id==='mine'?'Работает в шахте: ':'Добывает: ')+r.name_ru;
  move(a,e.x+.5,e.y+.5);
  if(Math.hypot(a.x-e.x-.5,a.y-e.y-.5)>=.9)return true;
  const skill=Math.min(100,(a.experience.mining||0));
- e.prog+=.065/daysPerUnit(r,m,t.depth,skill)*(m.yield_mult||1);
- while(e.prog>=1&&t.amount>0){e.prog-=1;t.amount-=1;e.n+=1;a.experience.mining=(a.experience.mining||0)+.5}
+ const tool=a.tool&&AetherraTech.toolDef(worldSpec,a.tool.id),power=tool?tool.power:.5;
+ e.prog+=.065/daysPerUnit(r,m,t.depth,skill,power)*(m.yield_mult||1);
+ while(e.prog>=1&&t.amount>0){
+  e.prog-=1;t.amount-=1;e.n+=1;a.experience.mining=(a.experience.mining||0)+.5;
+  if(e.res==='flint')techCounts.flint=(techCounts.flint||0)+1;
+  if(a.tool)a.tool.dur-=r.hardness/2;
+  // Risks from the spec: supports (a shaft nearby) cut the collapse chance; quarrying can hurt.
+  const risk=m.risk;
+  if(risk&&risk.type==='collapse'){
+   const chance=(risk.chance_per_unit_by_depth[t.depth]||0)*(1-(hasShaftNear(t.x,t.y)?risk.supports_reduce_by||0:0));
+   if(rand()<chance){a.health=Math.max(5,a.health-25);log(a.name+' попал под обвал в шахте');remember(a,'Обвал в шахте');if(e.n>0)toHaul(a,e);else endExtract(a);return e.n>0}
+  }else if(risk&&risk.type==='injury'&&rand()<risk.chance_per_unit){a.health=Math.max(5,a.health-8);remember(a,'Поранился при добыче')}
+  if(a.tool&&a.tool.dur<=0){log(a.name+': сломался инструмент ('+(AetherraTech.toolDef(worldSpec,a.tool.id)||{name_ru:a.tool.id}).name_ru+')');a.tool=undefined;break}
+ }
  if(t.amount<=0)deposits.splice(deposits.indexOf(t),1);
- if(e.n>=5||t.amount<=0&&e.n>0||!deposits.includes(t)&&e.n>0)e.phase='haul';
- else if(!deposits.includes(t)&&e.n===0){a.extract=undefined;return false}
+ if(e.n>=5||(e.n>0&&(t.amount<=0||!a.tool&&r.min_tool!=='hands')))toHaul(a,e);
+ else if(e.n===0&&(!deposits.includes(t)||!a.tool&&r.min_tool!=='hands')){endExtract(a);return false}
  return true;
+}
+// Mine shafts: deeper deposits can only be worked from a shaft next to them (wood and stone from the store).
+function shaftWanted(){
+ if(!hasTech()||structures.filter(st=>st.fn==='shaft').length>=3)return null;
+ for(const id of ['copper','tin']){
+  const r=resInfo(id);
+  if(!r)continue;
+  if(AetherraTech.pickTool(worldSpec,toolbox,r.min_tool)<0)continue;
+  for(const a of agents){
+   const k=a.health>0&&a.know&&a.know[id];
+   if(!k||k.conf<.6)continue;
+   for(const p of k.places){
+    const t=deposits.find(d=>d.res===id&&d.amount>0&&Math.abs(d.x-p.x)<=2&&Math.abs(d.y-p.y)<=2&&d.depth>=1);
+    if(t&&!chooseMethod(r,t.depth,t)&&r.methods.some(m=>{const e=worldSpec.extraction_methods.find(x=>x.id===m);return e&&e.requires_structure&&t.depth>=e.depth[0]&&t.depth<=e.depth[1]})&&!hasShaftNear(t.x,t.y))return {res:id,x:t.x,y:t.y};
+   }
+  }
+ }
+ return null;
+}
+function planShaft(a){
+ if(!hasTech()||a.age<16||a.shaft||a.extract||a.dig||a.craft||a.plan||a.carrying||rand()>.3)return;
+ const living=agents.filter(p=>p.health>0).length;
+ if(stock.food<living*4||stock.wood<8||(stock.stone||0)<4||agents.some(o=>o.shaft))return;
+ const w=shaftWanted();if(!w)return;
+ for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[2,0],[-2,0],[0,2],[0,-2]]){
+  const x=w.x+dx,y=w.y+dy;
+  if(passable(x,y)&&reachable[idx(x,y)]===1&&!homes.some(h=>h.x===x&&h.y===y)&&!structures.some(st=>st.x===x&&st.y===y)&&!(x===depot.x&&y===depot.y)){a.shaft={x,y};return}
+ }
+}
+function shaftStep(a){
+ const s0=a.shaft;a.state='Идёт строить шахту';move(a,s0.x+.5,s0.y+.5);
+ if(Math.hypot(a.x-s0.x-.5,a.y-s0.y-.5)>=.9)return true;
+ if(stock.wood>=8&&(stock.stone||0)>=4){stock.wood-=8;stock.stone-=4;structures.push({id:uid++,inv:-1,fn:'shaft',material:'wood',place:'mine',x:s0.x,y:s0.y});log(a.name+' построил шахту')}
+ a.shaft=undefined;a.path=undefined;return false;
+}
+// Discoveries: concepts unlock by use, accident, combination or experiment; once found, the whole village knows them.
+function techFlags(){
+ return {clay_near_fire:(stock.clay||0)>0,buried_fire:(stock.wood||0)>=3,ore_in_hot_fire:(stock.copper||0)+(stock.tin||0)+(stock.iron||0)>0,
+  two_ores:(stock.copper||0)>0&&(stock.tin||0)>0,fuel_ok:(stock.charcoal||0)>0||(stock.coal||0)>0,held_star_iron:(stock.star_iron||0)>0};
+}
+function techStep(a){
+ if(!hasTech()||a.age<16)return;
+ const known=HUMAN_CONCEPTS(),flags=techFlags();
+ for(const c of worldSpec.concepts){
+  const chance=AetherraTech.unlockChance(worldSpec,c,known,flags,techCounts);
+  if(chance>0&&rand()<Math.min(1,chance*1.5*(.5+trait(a,'curiosity')))){
+   concepts.push({id:c.id,by:a.name,day:Math.floor(day)});log(a.name+' открыл: '+c.name_ru);remember(a,'Открыл: '+c.name_ru);return;
+  }
+ }
+}
+// Crafting at the depot hearth: one resident at a time, only when food and wood are comfortable.
+const itemName=(kind,id)=>{const d=kind==='tool'?worldSpec.tools.find(t=>t.id===id):worldSpec.derived_materials.find(m=>m.id===id);return d?d.name_ru:id};
+function craftWanted(){
+ const known=HUMAN_CONCEPTS(),S=worldSpec,T=AetherraTech,list=[];
+ if((stock.charcoal||0)<4&&stock.wood>=12)list.push(['material','charcoal']);
+ if((stock.copper_metal||0)<2)list.push(['material','copper_metal']);
+ if((stock.bronze||0)<2)list.push(['material','bronze']);
+ for(const id of S.tool_tier_order)if(id!=='hands'&&toolCount(id)<(id==='stone'?2:1))list.push(['tool',id]);
+ return list.find(([kind,id])=>T.canCraft(S,kind,id,stock,known))||null;
+}
+function planCraft(a){
+ if(!hasTech()||a.age<16||a.craft||a.extract||a.dig||a.shaft||a.plan||a.carrying||rand()>.3)return;
+ const living=agents.filter(p=>p.health>0).length;
+ if(stock.food<living*4||stock.wood<6||agents.some(o=>o.craft))return;
+ const w=craftWanted();if(!w)return;
+ const rec=AetherraTech.recipe(worldSpec,w[0],w[1]);
+ a.craft={kind:w[0],id:w[1],left:Math.ceil(rec.days/.065)};
+}
+function craftStep(a){
+ const c=a.craft;a.state='Мастерит: '+itemName(c.kind,c.id);
+ move(a,depot.x+.5,depot.y+.5);
+ if(Math.hypot(a.x-depot.x-.5,a.y-depot.y-.5)>=.45)return true;
+ if(--c.left>0)return true;
+ const made=AetherraTech.craft(worldSpec,c.kind,c.id,stock,HUMAN_CONCEPTS());
+ if(made&&made.kind==='tool')toolbox.push({id:made.id,dur:made.dur});
+ if(made){const first=!events.some(e=>e.includes('сделал: '+itemName(c.kind,c.id)));if(first)log(a.name+' сделал: '+itemName(c.kind,c.id))}
+ a.craft=undefined;a.path=undefined;return false;
 }
 // Inventions: residents with an acute problem assemble a structure from bricks (function, material, place);
 // the whole village then builds it through the planner.
 let inventions=[],structures=[],spoilAcc=0;
-const MAX_INVENTIONS=6,MAX_STRUCTURES=12;
+const MAX_INVENTIONS=6,MAX_STRUCTURES=16;
 const hasBuilding=()=>typeof AetherraBuilding!=='undefined';
 function coldCount(){return agents.filter(a=>a.health>0&&(a.cold||0)>40).length}
 function warmthRadius(st){return 4*(st.material==='stone'?1.25:1)}
@@ -508,14 +630,20 @@ for(const a of agents){
   planHousing(a);
   considerInvention(a);
   planStructure(a);
+  markExplored(a);
   noticeSigns(a);
   planDig(a);
   planExtraction(a);
   planExplore(a);
+  techStep(a);
+  planCraft(a);
+  planShaft(a);
  }
  if(a.plan&&a.plan[0]==='buildHome'&&buildHomeStep(a))continue;
  if(a.plan&&a.plan[0]==='buildStructure'&&buildStructureStep(a))continue;
  if(a.dig&&digStep(a))continue;
+ if(a.craft&&craftStep(a))continue;
+ if(a.shaft&&shaftStep(a))continue;
  if(a.extract&&extractStep(a))continue;
  if(a.explore&&exploreStep(a))continue;
  if(a.decision==='food'){
@@ -585,17 +713,21 @@ function worldSnapshot(){
    foragePos:a.foraging?{x:a.foraging.x,y:a.foraging.y}:null})),
   homes:homes.map(h=>({...h})),trees:trees.map(t=>({...t})),
   berries:berries.map(b=>({...b})),events:[...events],depot:{...depot},
-  reachable:Array.from(reachable),inventions:inventions.map(i=>({...i})),structures:structures.map(t=>({...t})),spoilAcc,deposits:deposits.map(d=>({...d})),signs:signs.map(t=>({...t})),
+  reachable:Array.from(reachable),inventions:inventions.map(i=>({...i})),structures:structures.map(t=>({...t})),spoilAcc,deposits:deposits.map(d=>({...d})),signs:signs.map(t=>({...t})),explored:[...explored],concepts:concepts.map(c=>({...c})),techCounts:{...techCounts},toolbox:toolbox.map(t=>({...t})),
   trail:Object.fromEntries(trail.map((v,i)=>[i,Math.round(v*10)/10]).filter(([,v])=>v>=.5))};
 }
 function validateSnapshot(data){
  if(!data||data.schema!==SAVE_SCHEMA)throw Error('Неподдерживаемый формат сохранения');
  const known=(v,list)=>list.includes(v);
  const ID=/^[a-z_]{1,40}$/;
+ if(data.explored!==undefined&&(!Array.isArray(data.explored)||data.explored.length!==GRID_W*GRID_H||!data.explored.every(v=>Number.isFinite(v)&&v>=0&&v<=255)))throw Error('Повреждена карта обзора');
+ if(data.concepts!==undefined&&(!Array.isArray(data.concepts)||data.concepts.length>30||!data.concepts.every(c=>c&&ID.test(c.id)&&typeof c.by==='string'&&c.by.length<=60&&Number.isFinite(c.day))))throw Error('Повреждены открытия');
+ if(data.techCounts!==undefined&&(!data.techCounts||typeof data.techCounts!=='object'||Array.isArray(data.techCounts)||Object.keys(data.techCounts).length>30||!Object.entries(data.techCounts).every(([k,v])=>ID.test(k)&&Number.isFinite(v)&&v>=0&&v<=1000000)))throw Error('Повреждены счётчики');
+ if(data.toolbox!==undefined&&(!Array.isArray(data.toolbox)||data.toolbox.length>60||!data.toolbox.every(t=>t&&ID.test(t.id)&&Number.isFinite(t.dur)&&t.dur>=0&&t.dur<=1000)))throw Error('Повреждены орудия');
  if(data.deposits!==undefined&&(!Array.isArray(data.deposits)||data.deposits.length>3000||!data.deposits.every(d=>d&&ID.test(d.res)&&Number.isInteger(d.x)&&Number.isInteger(d.y)&&inside(d.x,d.y)&&Number.isInteger(d.depth)&&d.depth>=0&&d.depth<=4&&Number.isFinite(d.amount)&&d.amount>=0&&d.amount<=1000)))throw Error('Повреждены недра');
  if(data.signs!==undefined&&(!Array.isArray(data.signs)||data.signs.length>1500||!data.signs.every(t=>t&&ID.test(t.sign)&&Number.isInteger(t.x)&&Number.isInteger(t.y)&&inside(t.x,t.y)&&typeof t.real==='boolean')))throw Error('Повреждены признаки');
  if(!Object.values(data.stock).every(v=>Number.isFinite(v)&&v>=0&&v<=1000000))throw Error('Некорректные ресурсы');
- const FNS=['warmth','preserve'],MATS=['wood','stone'],PLACES_=['depot','homes'];
+ const FNS=['warmth','preserve','shaft'],MATS=['wood','stone'],PLACES_=['depot','homes','mine'];
  if(data.inventions!==undefined&&(!Array.isArray(data.inventions)||data.inventions.length>MAX_INVENTIONS||!data.inventions.every(i=>i&&Number.isInteger(i.id)&&known(i.fn,FNS)&&known(i.material,MATS)&&known(i.place,PLACES_)&&typeof i.name==='string'&&i.name.length<=60&&Number.isFinite(i.cost)&&i.cost>=0&&i.cost<=100&&typeof i.inventor==='string'&&i.inventor.length<=60&&Number.isFinite(i.day))))throw Error('Повреждены изобретения');
  if(data.structures!==undefined&&(!Array.isArray(data.structures)||data.structures.length>MAX_STRUCTURES||!data.structures.every(t=>t&&Number.isInteger(t.id)&&Number.isInteger(t.inv)&&known(t.fn,FNS)&&known(t.material,MATS)&&known(t.place,PLACES_)&&Number.isInteger(t.x)&&Number.isInteger(t.y)&&inside(t.x,t.y))))throw Error('Повреждены постройки');
  if(data.spoilAcc!==undefined&&!(Number.isFinite(data.spoilAcc)&&data.spoilAcc>=0&&data.spoilAcc<1000))throw Error('Повреждён запас');
@@ -608,7 +740,7 @@ function validateSnapshot(data){
  if(!Number.isFinite(data.day)||data.day<0||!Number.isInteger(data.rng)||data.rng<0||data.rng>4294967295||!Number.isInteger(data.uid)||data.uid<0||!Number.isFinite(data.seed))throw Error('Некорректное время или генератор');
  const pos=p=>p&&Number.isInteger(p.x)&&Number.isInteger(p.y)&&inside(p.x,p.y);
  if(!pos(data.depot)||data.reachable[idx(data.depot.x,data.depot.y)]!==1)throw Error('Некорректный склад');
- if(!data.agents.every(a=>Number.isInteger(a.id)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&inside(Math.floor(a.x),Math.floor(a.y))&&Number.isFinite(a.hunger)&&a.hunger>=0&&a.hunger<=100&&Number.isFinite(a.health)&&a.health>=0&&a.health<=100&&Number.isFinite(a.energy)&&a.energy>=0&&a.energy<=100&&Number.isFinite(a.carrying)&&a.carrying>=0&&a.experience&&Number.isFinite(a.experience.food)&&Number.isFinite(a.experience.wood)&&Array.isArray(a.memory)&&a.memory.length<=6&&a.memory.every(m=>typeof m==='string'&&m.length<=200)&&(a.bonds===undefined||a.bonds&&typeof a.bonds==='object'&&!Array.isArray(a.bonds)&&Object.keys(a.bonds).length<=12&&Object.entries(a.bonds).every(([id,v])=>/^\d{1,9}$/.test(id)&&Number.isFinite(v)&&v>=0&&v<=100))&&(a.traits===undefined||a.traits&&TRAITS.every(k=>Number.isFinite(a.traits[k])&&a.traits[k]>=0&&a.traits[k]<=1))&&(a.plan===undefined||a.plan===null||Array.isArray(a.plan)&&a.plan.length<=6&&a.plan.every(x=>['chop','deliver','buildHome','buildStructure'].includes(x)))&&(a.site==null||pos(a.site))&&(a.know===undefined||a.know&&typeof a.know==='object'&&!Array.isArray(a.know)&&Object.keys(a.know).length<=12&&Object.entries(a.know).every(([id,k])=>ID.test(id)&&k&&Number.isFinite(k.conf)&&k.conf>=0&&k.conf<=1&&Array.isArray(k.places)&&k.places.length<=3&&k.places.every(p=>Number.isInteger(p.x)&&Number.isInteger(p.y)&&inside(p.x,p.y))))&&(a.explore==null||Number.isInteger(a.explore.x)&&Number.isInteger(a.explore.y)&&inside(a.explore.x,a.explore.y)&&Number.isFinite(a.explore.t))&&(a.dig==null||ID.test(a.dig.res)&&Number.isFinite(a.dig.x)&&Number.isFinite(a.dig.y)&&Number.isFinite(a.dig.left))&&(a.extract==null||ID.test(a.extract.res)&&Number.isInteger(a.extract.x)&&Number.isInteger(a.extract.y)&&Number.isInteger(a.extract.depth)&&['dig','haul'].includes(a.extract.phase)&&Number.isFinite(a.extract.prog)&&Number.isFinite(a.extract.n)&&a.extract.n>=0&&a.extract.n<=20)&&(a.cold===undefined||Number.isFinite(a.cold)&&a.cold>=0&&a.cold<=100)&&(a.invId===undefined||a.invId===null||Number.isInteger(a.invId))&&typeof a.name==='string'&&a.name.length>=1&&a.name.length<=60&&(a.state===undefined||typeof a.state==='string'&&a.state.length<=80)))throw Error('Повреждены данные жителей');
+ if(!data.agents.every(a=>Number.isInteger(a.id)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&inside(Math.floor(a.x),Math.floor(a.y))&&Number.isFinite(a.hunger)&&a.hunger>=0&&a.hunger<=100&&Number.isFinite(a.health)&&a.health>=0&&a.health<=100&&Number.isFinite(a.energy)&&a.energy>=0&&a.energy<=100&&Number.isFinite(a.carrying)&&a.carrying>=0&&a.experience&&Number.isFinite(a.experience.food)&&Number.isFinite(a.experience.wood)&&Array.isArray(a.memory)&&a.memory.length<=6&&a.memory.every(m=>typeof m==='string'&&m.length<=200)&&(a.bonds===undefined||a.bonds&&typeof a.bonds==='object'&&!Array.isArray(a.bonds)&&Object.keys(a.bonds).length<=12&&Object.entries(a.bonds).every(([id,v])=>/^\d{1,9}$/.test(id)&&Number.isFinite(v)&&v>=0&&v<=100))&&(a.traits===undefined||a.traits&&TRAITS.every(k=>Number.isFinite(a.traits[k])&&a.traits[k]>=0&&a.traits[k]<=1))&&(a.plan===undefined||a.plan===null||Array.isArray(a.plan)&&a.plan.length<=6&&a.plan.every(x=>['chop','deliver','buildHome','buildStructure'].includes(x)))&&(a.site==null||pos(a.site))&&(a.know===undefined||a.know&&typeof a.know==='object'&&!Array.isArray(a.know)&&Object.keys(a.know).length<=12&&Object.entries(a.know).every(([id,k])=>ID.test(id)&&k&&Number.isFinite(k.conf)&&k.conf>=0&&k.conf<=1&&Array.isArray(k.places)&&k.places.length<=3&&k.places.every(p=>Number.isInteger(p.x)&&Number.isInteger(p.y)&&inside(p.x,p.y))))&&(a.tool==null||ID.test(a.tool.id)&&Number.isFinite(a.tool.dur))&&(a.craft==null||['tool','material'].includes(a.craft.kind)&&ID.test(a.craft.id)&&Number.isFinite(a.craft.left)&&a.craft.left>=0&&a.craft.left<=200)&&(a.shaft==null||Number.isInteger(a.shaft.x)&&Number.isInteger(a.shaft.y)&&inside(a.shaft.x,a.shaft.y))&&(a.explore==null||Number.isInteger(a.explore.x)&&Number.isInteger(a.explore.y)&&inside(a.explore.x,a.explore.y)&&Number.isFinite(a.explore.t))&&(a.dig==null||ID.test(a.dig.res)&&Number.isFinite(a.dig.x)&&Number.isFinite(a.dig.y)&&Number.isFinite(a.dig.left))&&(a.extract==null||ID.test(a.extract.res)&&Number.isInteger(a.extract.x)&&Number.isInteger(a.extract.y)&&Number.isInteger(a.extract.depth)&&['dig','haul'].includes(a.extract.phase)&&Number.isFinite(a.extract.prog)&&Number.isFinite(a.extract.n)&&a.extract.n>=0&&a.extract.n<=20)&&(a.cold===undefined||Number.isFinite(a.cold)&&a.cold>=0&&a.cold<=100)&&(a.invId===undefined||a.invId===null||Number.isInteger(a.invId))&&typeof a.name==='string'&&a.name.length>=1&&a.name.length<=60&&(a.state===undefined||typeof a.state==='string'&&a.state.length<=80)))throw Error('Повреждены данные жителей');
  if(!data.homes.every(h=>pos(h)&&Number.isInteger(h.id)&&(h.owner===undefined||typeof h.owner==='string'&&h.owner.length<=60))||!data.trees.every(t=>pos(t)&&Number.isFinite(t.wood)&&t.wood>=0)||!data.berries.every(b=>pos(b)&&Number.isFinite(b.food)&&b.food>=0))throw Error('Повреждены здания или природные ресурсы');
  if(!Array.isArray(data.events)||data.events.length>8||!data.events.every(e=>typeof e==='string'&&e.length<500))throw Error('Повреждена история мира');
 }
@@ -618,7 +750,7 @@ function restoreWorld(data){
  tiles=[...data.tiles];homes=data.homes.map(h=>({...h}));trees=data.trees.map(t=>({...t}));
  berries=data.berries.map(b=>({...b}));events=[...data.events];depot={...data.depot};
  reachable=Uint8Array.from(data.reachable);
-inventions=(data.inventions||[]).map(i=>({...i}));structures=(data.structures||[]).map(t=>({...t}));spoilAcc=data.spoilAcc||0;deposits=(data.deposits||[]).map(d=>({...d}));signs=(data.signs||[]).map(t=>({...t}));
+inventions=(data.inventions||[]).map(i=>({...i}));structures=(data.structures||[]).map(t=>({...t}));spoilAcc=data.spoilAcc||0;deposits=(data.deposits||[]).map(d=>({...d}));signs=(data.signs||[]).map(t=>({...t}));explored=Array.isArray(data.explored)&&data.explored.length===GRID_W*GRID_H?[...data.explored]:new Array(GRID_W*GRID_H).fill(0);concepts=(data.concepts||[]).map(c=>({...c}));techCounts={...(data.techCounts||{})};toolbox=(data.toolbox||[]).map(t=>({...t}));
 if(hasWorld()&&!deposits.length&&!signs.length)generateUnderground();
 trail=new Array(W*H).fill(0);if(data.trail)for(const [i,v] of Object.entries(data.trail))trail[+i]=v;
  agents=data.agents.map(a=>{
@@ -651,7 +783,7 @@ function loadWorld(){
 }
 function visibleSigns(){if(!hasWorld())return [];const night=isNight();return signs.filter(t=>AetherraWorld.signVisible(worldSpec,t.sign,night))}
 function knownSpots(){const out=new Map();for(const a of agents)if(a.health>0&&a.know)for(const [id,k] of Object.entries(a.know))if(k.conf>=.6&&!(resInfo(id)||{}).known_at_start)for(const p of k.places)out.set(id+':'+p.x+':'+p.y,{res:id,x:p.x,y:p.y});return [...out.values()]}
-function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Изобретения',inventions.length],['Знания',hasWorld()?worldSpec.resources.filter(r=>!r.known_at_start&&settlementKnows(r.id)).length:'—'],['Камень',stock.stone||0],['Соль',stock.salt||0],['Время',isNight()?'🌙 ночь':'☀ день'],['Дети',agents.filter(a=>a.health>0&&a.age<16).length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
+function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Изобретения',inventions.length],['Знания',hasWorld()?worldSpec.resources.filter(r=>!r.known_at_start&&settlementKnows(r.id)).length:'—'],['Камень',stock.stone||0],['Соль',stock.salt||0],['Открытия',concepts.length],['Орудия',toolbox.length],['Время',isNight()?'🌙 ночь':'☀ день'],['Дети',agents.filter(a=>a.health>0&&a.age<16).length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
 if(selected){let o=selected.type==='agent'?agents.find(a=>a.id===selected.id):homes.find(h=>h.id===selected.id);
 document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+escapeHtml(o.name)+'</b><br>Возраст: '+Math.floor(o.age)+'<br>Действие: '+escapeHtml(o.state)+'<br>Энергия: '+Math.round(o.energy)+'%<br>Голод: '+Math.round(o.hunger)+'%<br>Здоровье: '+Math.round(o.health)+'%<br>Навык добычи: '+o.experience.wood+'<br>Сбор пищи: '+o.experience.food+'<br>Знает: '+(Object.entries(o.know||{}).filter(([,k])=>k.conf>=.6).map(([id])=>escapeHtml((resInfo(id)||{name_ru:id}).name_ru)).join(', ')||'ничего нового')+'<br>Друзья: '+(Object.entries(o.bonds||{}).sort((x,y)=>y[1]-x[1]).slice(0,3).map(([id,v])=>{const f=agents.find(z=>z.id===+id);return f?escapeHtml(f.name)+' '+Math.round(v):null}).filter(Boolean).join(', ')||'пока нет')+'<br>Характер: '+TRAITS.map(k=>TRAIT_LABELS[k]+' '+Math.round(trait(o,k)*100)+'%').join(', ')+'<br>Память: '+escapeHtml(o.memory.slice(0,3).join('; '))+'<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+escapeHtml(o.owner)+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
 function centerCamera(){const w=canvas.clientWidth||900,h=canvas.clientHeight||540;scale=Math.max(.45,Math.min(1,Math.min(w/(26*S),h/(18*S))));ox=w/2-(depot.x+.5)*S*scale;oy=h/2-(depot.y+.5)*S*scale}

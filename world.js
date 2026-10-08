@@ -22,7 +22,10 @@ function deriveBiomes(tiles,W,H,trees){
 const rockAt=(spec,biome,depth)=>{const col=spec.geology.column_by_biome[biome];return col?col[depth]:null};
 const sampleInt=(rnd,lo,hi)=>lo+Math.floor(rnd()*(hi-lo+1));
 // Deposits: [{res,x,y,depth,amount}]; signs: [{sign,x,y,real}]. Resources that need overlays (ley lines, craters) are not generated here.
-function generate(spec,tiles,trees,W,H,seed){
+// `reachable` (optional) limits deposits to land the settlement can walk to. Resources the early game cannot do without
+// (clay, copper, tin, flint, salt) are retried with a higher rarity when a world would otherwise have none of them.
+const ESSENTIAL=['flint','clay','salt','copper','tin'];
+function generate(spec,tiles,trees,W,H,seed,reachable){
  const rnd=mulberry32((seed>>>0)^0x9E3779B9);
  const biomes=deriveBiomes(tiles,W,H,trees);
  const deposits=[],taken=new Set();
@@ -30,8 +33,10 @@ function generate(spec,tiles,trees,W,H,seed){
  for(const r of spec.resources){
   if(r.host.near_overlay)continue;
   const hostBiomes=r.host.biomes||[],rocks=r.host.rocks||null;
-  const okDepths=(x,y)=>{const out=[];for(let d=r.depth[0];d<=r.depth[1];d++){const rock=rockAt(spec,biomes[y*W+x],d);if(!rocks||rocks.includes(rock))out.push(d)}return out};
-  const eligible=(x,y)=>{if(x<0||y<0||x>=W||y>=H)return false;const b=biomes[y*W+x];return b!=='water'&&(hostBiomes.includes('*')||hostBiomes.includes(b))&&okDepths(x,y).length>0};
+  // Only depths some extraction method can reach (the spec lists clay down to layer 2 but digging stops at 1).
+  const maxReach=Math.max(...r.methods.map(m=>{const e=spec.extraction_methods.find(x=>x.id===m);return e?e.depth[1]:-1}));
+  const okDepths=(x,y)=>{const out=[];for(let d=r.depth[0];d<=Math.min(r.depth[1],maxReach);d++){const rock=rockAt(spec,biomes[y*W+x],d);if(!rocks||rocks.includes(rock))out.push(d)}return out};
+  const eligible=(x,y)=>{if(x<0||y<0||x>=W||y>=H)return false;if(reachable&&reachable[y*W+x]!==1)return false;const b=biomes[y*W+x];return b!=='water'&&(hostBiomes.includes('*')||hostBiomes.includes(b))&&okDepths(x,y).length>0};
   const cells=[];for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(eligible(x,y))cells.push([x,y]);
   let made=0;const cap=60;
   const put=(x,y,d)=>{const k=r.id+':'+x+':'+y+':'+d;if(taken.has(k)||made>=cap)return false;taken.add(k);deposits.push({res:r.id,x,y,depth:d,amount:sampleInt(rnd,r.amount[0],r.amount[1])});made++;return true};
@@ -41,13 +46,17 @@ function generate(spec,tiles,trees,W,H,seed){
    for(const [x,y] of cells){
     if(shape==='surface'){if(rnd()<rarity){const ds=okDepths(x,y).filter(d=>!depthRange||(d>=depthRange[0]&&d<=depthRange[1]));if(ds.length)put(x,y,ds[0])}} // surface = shallowest layer
     else if(shape==='pocket'){if(rnd()<rarity/2.5){let cx=x,cy=y;const size=sampleInt(rnd,1,4);for(let k=0;k<size;k++){const d=rngDepth(cx,cy);if(d!==null)put(cx,cy,d);const [dx,dy]=N4[Math.floor(rnd()*4)];if(eligible(cx+dx,cy+dy)){cx+=dx;cy+=dy}}}}
-    else if(shape==='vein'){if(rnd()<rarity/8){let cx=x,cy=y,d=rngDepth(x,y);if(d===null)continue;const len=sampleInt(rnd,4,12);for(let k=0;k<len;k++){put(cx,cy,d);const [dx,dy]=N4[Math.floor(rnd()*4)];if(eligible(cx+dx,cy+dy)){cx+=dx;cy+=dy}const nd=Math.max(r.depth[0],Math.min(r.depth[1],d+sampleInt(rnd,-1,1)));if(okDepths(cx,cy).includes(nd))d=nd}}}
+    else if(shape==='vein'){if(rnd()<rarity/8){let cx=x,cy=y,d=rngDepth(x,y);if(d===null)continue;const len=sampleInt(rnd,4,12);for(let k=0;k<len;k++){if(!okDepths(cx,cy).includes(d)){const fix=rngDepth(cx,cy);if(fix===null)break;d=fix}put(cx,cy,d);const [dx,dy]=N4[Math.floor(rnd()*4)];if(eligible(cx+dx,cy+dy)){cx+=dx;cy+=dy}const nd=Math.max(r.depth[0],Math.min(r.depth[1],d+sampleInt(rnd,-1,1)));if(okDepths(cx,cy).includes(nd))d=nd}}}
     else if(shape==='layer'){if(rnd()<rarity/25){const d=rngDepth(x,y);if(d===null)continue;const want=sampleInt(rnd,10,40),seen=new Set([y*W+x]),queue=[[x,y]];let got=0;while(queue.length&&got<want){const [qx,qy]=queue.shift();if(okDepths(qx,qy).includes(d)){put(qx,qy,d);got++}for(const [dx,dy] of N4){const nx=qx+dx,ny=qy+dy;if(eligible(nx,ny)&&!seen.has(ny*W+nx)){seen.add(ny*W+nx);queue.push([nx,ny])}}}}}
     else if(shape==='placer'){if(nearWater(x,y)&&rnd()<rarity*6){const d=rngDepth(x,y);if(d!==null)put(x,y,d)}}
    }
   };
-  place(r.shape,r.rarity);
-  if(r.source_shape)place(r.source_shape.shape,r.source_shape.rarity,r.source_shape.depth);
+  const boost=ESSENTIAL.includes(r.id)?[1,3,9,27]:[1];
+  for(const mult of boost){
+   if(made>0)break;
+   place(r.shape,Math.min(1,r.rarity*mult));
+   if(r.source_shape)place(r.source_shape.shape,Math.min(1,r.source_shape.rarity*mult),r.source_shape.depth);
+  }
  }
  // Signs: real ones appear near deposits with the spec reliability; false ones appear anywhere on land.
  const signs=[],seenSign=new Set();
