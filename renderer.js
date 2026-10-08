@@ -135,6 +135,27 @@ function render(ctx,w){
  for(const it of items)it.draw();
  if(selected){const a=selected.type==='agent'?agents.find(x=>x.id===selected.id&&x.health>0):homes.find(x=>x.id===selected.id);if(a){ctx.strokeStyle='#ffe4a0';ctx.lineWidth=2.5;if(selected.type==='home')ctx.strokeRect(a.x*S+2,a.y*S-8,52,59);else ctx.strokeRect(a.x*S-12,a.y*S-25,24,39)}}
  ctx.restore();
+ // Night: a cool tint over the whole map, then warm light from windows and the depot lantern.
+ const dark=1-(w.daylight===undefined?1:w.daylight);
+ if(dark>.02){
+  ctx.fillStyle='rgba(10,16,48,'+(dark*.5).toFixed(3)+')';ctx.fillRect(0,0,width,height);
+  ctx.save();ctx.translate(ox,oy);ctx.scale(scale,scale);
+  const glow=(x,y,r,alpha)=>{
+   if(typeof ctx.createRadialGradient!=='function')return;
+   const g=ctx.createRadialGradient(x,y,2,x,y,r);
+   if(!g||typeof g.addColorStop!=='function')return;
+   g.addColorStop(0,'rgba(255,205,120,'+alpha.toFixed(3)+')');g.addColorStop(1,'rgba(255,205,120,0)');
+   ctx.fillStyle=g;ctx.fillRect(x-r,y-r,r*2,r*2);
+  };
+  for(const h of homes){
+   if(h.x<left-1||h.x>right||h.y<top-1||h.y>bottom)continue;
+   const px=h.x*S,py=h.y*S;
+   glow(px+17.5,py+31,44,dark*.55);
+   ctx.fillStyle='rgba(255,226,150,'+Math.min(1,dark*1.6).toFixed(2)+')';ctx.fillRect(px+13,py+26,9,10);
+  }
+  glow((depot.x+.5)*S+22,(depot.y+.5)*S-28,70,dark*.6);
+  ctx.restore();
+ }
 }
 global.AetherraRenderer={render,hash};
 })(typeof window!=='undefined'?window:globalThis);

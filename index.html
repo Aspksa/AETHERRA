@@ -104,6 +104,10 @@ function targetTree(a){
  }
  return null;
 }
+// Day and night: 12 world days make one cycle; day 0 starts at noon. Sunlight is 1 at midday and 0 deep at night.
+const DAY_LENGTH=12;
+function daylight(d){return Math.max(0,Math.min(1,(Math.cos(2*Math.PI*(d%DAY_LENGTH)/DAY_LENGTH)+.3)/.8))}
+function isNight(){return daylight(day)<.2}
 // Trails: wear builds up on tiles residents walk over, speeds up walking and attracts new houses.
 let trail=[];
 const TRAIL_ROAD=100;
@@ -228,7 +232,7 @@ for(const a of agents){
   }
   continue;
  }
- if(a.energy<22)a.resting=true;
+ if(a.energy<22||(isNight()&&a.home&&a.energy<90))a.resting=true;
  if(a.resting){
   const home=homes.find(h=>h.id===a.home);
   if(home&&Math.hypot(a.x-home.x-.5,a.y-home.y-.5)>8){
@@ -242,7 +246,7 @@ for(const a of agents){
    continue;
   }
   a.state=home?'Спит дома':'Отдыхает';a.energy=Math.min(100,a.energy+(home?1.1:.75));
-  if(a.energy>=80)a.resting=false;
+  if(a.energy>=80&&!(home&&isNight()))a.resting=false; // housed residents sleep until morning
   continue;
  }
  if(a.age<16){a.state='Растёт';continue}
@@ -378,13 +382,13 @@ function loadWorld(){
   return true;
  }catch(e){document.getElementById('saveStatus').textContent='Ошибка загрузки: '+e.message;return false}
 }
-function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Дети',agents.filter(a=>a.health>0&&a.age<16).length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
+function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Время',isNight()?'🌙 ночь':'☀ день'],['Дети',agents.filter(a=>a.health>0&&a.age<16).length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
 if(selected){let o=selected.type==='agent'?agents.find(a=>a.id===selected.id):homes.find(h=>h.id===selected.id);
 document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+escapeHtml(o.name)+'</b><br>Возраст: '+Math.floor(o.age)+'<br>Действие: '+escapeHtml(o.state)+'<br>Энергия: '+Math.round(o.energy)+'%<br>Голод: '+Math.round(o.hunger)+'%<br>Здоровье: '+Math.round(o.health)+'%<br>Навык добычи: '+o.experience.wood+'<br>Сбор пищи: '+o.experience.food+'<br>Друзья: '+(Object.entries(o.bonds||{}).sort((x,y)=>y[1]-x[1]).slice(0,3).map(([id,v])=>{const f=agents.find(z=>z.id===+id);return f?escapeHtml(f.name)+' '+Math.round(v):null}).filter(Boolean).join(', ')||'пока нет')+'<br>Характер: '+TRAITS.map(k=>TRAIT_LABELS[k]+' '+Math.round(trait(o,k)*100)+'%').join(', ')+'<br>Память: '+escapeHtml(o.memory.slice(0,3).join('; '))+'<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+escapeHtml(o.owner)+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
 function centerCamera(){const w=canvas.clientWidth||900,h=canvas.clientHeight||540;scale=Math.max(.45,Math.min(1,Math.min(w/(26*S),h/(18*S))));ox=w/2-(depot.x+.5)*S*scale;oy=h/2-(depot.y+.5)*S*scale}
 function size(){const r=canvas.getBoundingClientRect(),d=window.devicePixelRatio||1;canvas.width=Math.round(r.width*d);canvas.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0)}
 function draw(){
- AetherraRenderer.render(ctx,{canvas,trail,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy});
+ AetherraRenderer.render(ctx,{daylight:daylight(day),canvas,trail,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy});
  requestAnimationFrame(draw);
 }
 function clickAt(e){let r=canvas.getBoundingClientRect(),x=(e.clientX-r.left-ox)/scale/S,y=(e.clientY-r.top-oy)/scale/S;
