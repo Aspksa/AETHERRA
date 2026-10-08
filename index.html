@@ -193,7 +193,7 @@ const SAVE_KEY='AETHERRA_WORLD_V1';
 const SAVE_SCHEMA=1;
 function worldSnapshot(){
  return {schema:SAVE_SCHEMA,seed,rng,uid,day,stock:{...stock},tiles:[...tiles],
-  agents:agents.map(a=>({...a,tree:null,foraging:null,path:null,goal:null,
+  agents:agents.map(a=>({...a,tree:null,foraging:null,path:a.path?a.path.map(p=>({...p})):a.path,goal:a.goal??null,
    treePos:a.tree?{x:a.tree.x,y:a.tree.y}:null,
    foragePos:a.foraging?{x:a.foraging.x,y:a.foraging.y}:null})),
   homes:homes.map(h=>({...h})),trees:trees.map(t=>({...t})),
@@ -220,7 +220,7 @@ function restoreWorld(data){
  berries=data.berries.map(b=>({...b}));events=[...data.events];depot={...data.depot};
  reachable=Uint8Array.from(data.reachable);
  agents=data.agents.map(a=>{
-  const copy={...a,memory:[...a.memory],experience:{...a.experience},path:undefined,goal:undefined};
+  const copy={...a,memory:[...a.memory],experience:{...a.experience},path:a.path?a.path.map(p=>({...p})):undefined,goal:a.goal??undefined};
   copy.tree=copy.treePos?trees.find(t=>t.x===copy.treePos.x&&t.y===copy.treePos.y)||null:null;
   copy.foraging=copy.foragePos?berries.find(b=>b.x===copy.foragePos.x&&b.y===copy.foragePos.y)||null:null;
   delete copy.treePos;delete copy.foragePos;
