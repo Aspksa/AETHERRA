@@ -12,6 +12,8 @@ import shutil
 import sys
 import tempfile
 import time
+import socket
+from urllib.request import urlopen as health_urlopen
 from urllib.request import Request, urlopen
 import zipfile
 from urllib.error import HTTPError, URLError
@@ -91,51 +93,120 @@ def check():
             "source": f"https://github.com/{REPO}/commit/{sha}"}
 
 
+def verify_ci(sha):
+    """Fail closed unless both required jobs succeeded on this exact commit."""
+    url = f"https://api.github.com/repos/{REPO}/commits/{sha}/check-runs?per_page=100"
+    data = json.loads(request_bytes(url, 1024 * 1024).decode("utf-8"))
+    results = {}
+    for item in data.get("check_runs", []):
+        name = item.get("name")
+        if name in ("python-server", "browser-syntax"):
+            results[name] = item.get("status") == "completed" and item.get("conclusion") == "success"
+    if not all(results.get(n) is True for n in ("python-server", "browser-syntax")):
+        raise RuntimeError("Обновление заблокировано: GitHub CI ещё не зелёный для выбранного коммита.")
+
+
+def runtime_files(archive):
+    """Only root-level executable app files, never saves, keys, tests or workflows."""
+    allowed = {".py", ".bat", ".html", ".js", ".css"}
+    files = {}
+    for name in archive.namelist():
+        parts = Path(name).parts
+        if len(parts) != 2 or name.endswith("/"):
+            continue
+        filename = parts[-1]
+        if filename == "README.md" or (Path(filename).suffix.lower() in allowed and
+                                       not filename.startswith(".")):
+            files[filename] = name
+    if any(name not in files for name in FILES):
+        raise ValueError("Incomplete update archive")
+    return files
+
+
+def rollback():
+    manifest = BASE / ".aetherra_backup" / "manifest.json"
+    if not manifest.exists():
+        raise RuntimeError("Резервная копия не найдена")
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    for name in data["files"]:
+        saved = BASE / ".aetherra_backup" / name
+        current = BASE / name
+        if name in data["existing"]:
+            shutil.copy2(saved, current)
+        elif current.exists():
+            current.unlink()
+    old_sha = data.get("installed")
+    version_file = BASE / ".aetherra_version"
+    if old_sha:
+        version_file.write_text(old_sha, encoding="ascii")
+    elif version_file.exists():
+        version_file.unlink()
+
+
 def install():
+    if (BASE / ".git").exists():
+        raise RuntimeError("Обновление рабочей Git-копии запрещено: используйте git pull.")
     sha, _ = latest_commit()
     if sha == local_sha():
         return "Already up to date"
-    # Pin archive to verified GitHub commit rather than downloading changing main.
+    verify_ci(sha)
     archive_url = f"https://github.com/{REPO}/archive/{sha}.zip"
     data = request_bytes(archive_url)
     with zipfile.ZipFile(io.BytesIO(data)) as z:
-        members = {Path(name).name: name for name in z.namelist()
-                   if len(Path(name).parts) == 2 and not name.endswith("/")}
-        if any(f not in members for f in FILES):
-            raise ValueError("Incomplete update archive")
+        members = runtime_files(z)
         with tempfile.TemporaryDirectory(prefix="aetherra-update-", dir=BASE) as tmp:
             temp = Path(tmp)
-            for filename in FILES:
-                payload = z.read(members[filename])
+            for filename, member in members.items():
+                payload = z.read(member)
                 if len(payload) > 5 * 1024 * 1024:
                     raise ValueError("File too large: " + filename)
                 (temp / filename).write_bytes(payload)
-            compile((temp / "server.py").read_bytes(), "server.py", "exec")
-            compile((temp / "update.py").read_bytes(), "update.py", "exec")
+            for file in temp.glob("*.py"):
+                compile(file.read_bytes(), file.name, "exec")
             html = (temp / "index.html").read_text(encoding="utf-8")
             if "<canvas" not in html or "</html>" not in html:
                 raise ValueError("Invalid game page")
-            # Preserve a single previous version and restore on failure.
             backup = BASE / ".aetherra_backup"
             backup.mkdir(exist_ok=True)
-            for filename in FILES:
-                current = BASE / filename
-                old = backup / filename
-                if current.exists():
-                    shutil.copy2(current, old)
-            changed = []
+            existing = []
+            previous_sha = local_sha()
+            for name in members:
+                if (BASE / name).exists():
+                    shutil.copy2(BASE / name, backup / name)
+                    existing.append(name)
+            (backup / "manifest.json").write_text(
+                json.dumps({"files": list(members), "existing": existing,
+                            "installed": previous_sha}), encoding="utf-8")
             try:
-                for filename in FILES:
-                    os.replace(temp / filename, BASE / filename)
-                    changed.append(filename)
+                for name in members:
+                    os.replace(temp / name, BASE / name)
                 (BASE / ".aetherra_version").write_text(sha, encoding="ascii")
             except Exception:
-                for filename in reversed(changed):
-                    old = backup / filename
-                    if old.exists():
-                        shutil.copy2(old, BASE / filename)
+                rollback()
                 raise
     return "Installed: " + sha[:12]
+
+
+def start_server_and_verify():
+    """Use interpreter directly; don't re-enter a possibly rewritten BAT script."""
+    kwargs = {"cwd": str(BASE), "stdout": subprocess.DEVNULL,
+              "stderr": subprocess.DEVNULL}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+    else:
+        kwargs["start_new_session"] = True
+    child = subprocess.Popen([sys.executable, str(BASE / "server.py")], **kwargs)
+    for _ in range(30):
+        if child.poll() is not None:
+            raise RuntimeError("Новый сервер завершился с ошибкой")
+        try:
+            with health_urlopen("http://127.0.0.1:8765/health", timeout=1) as reply:
+                if json.load(reply).get("app") == "AETHERRA":
+                    return
+        except (OSError, ValueError, TimeoutError):
+            time.sleep(.5)
+    child.terminate()
+    raise RuntimeError("Новый сервер не прошёл проверку /health")
 
 
 def main():
@@ -143,14 +214,26 @@ def main():
     try:
         if mode == "install-restart":
             time.sleep(2)
+            updated = False
             try:
-                print(install())
+                message = install()
+                updated = message.startswith("Installed:")
+                print(message, flush=True)
+                start_server_and_verify()
+                print("New server is healthy", flush=True)
             except Exception as exc:
-                print("Update failed; restoring current launcher:", exc, file=sys.stderr)
-            if sys.platform == "win32":
-                subprocess.Popen(["cmd", "/c", str(BASE / "AETHERRA.bat")], cwd=str(BASE), creationflags=subprocess.CREATE_NEW_CONSOLE)
-            else:
-                subprocess.Popen([sys.executable, str(BASE / "server.py")], cwd=str(BASE), start_new_session=True)
+                print("Update or startup failed:", exc, file=sys.stderr, flush=True)
+                if updated:
+                    try:
+                        rollback()
+                        print("Rollback complete", flush=True)
+                    except Exception as restore_error:
+                        print("Rollback FAILED:", restore_error, file=sys.stderr, flush=True)
+                try:
+                    start_server_and_verify()
+                except Exception as restart_error:
+                    print("Recovery restart FAILED:", restart_error, file=sys.stderr, flush=True)
+                return 1
         elif mode == "check":
             print(json.dumps(check()))
         elif mode == "install":
