@@ -37,6 +37,21 @@ class SafeUpdaterTests(unittest.TestCase):
         self.assertNotIn(".secrets",files)
         self.assertNotIn("test.py",files)
 
+    def test_runtime_assets_and_launcher_are_delivered(self):
+        stream=io.BytesIO()
+        with zipfile.ZipFile(stream,"w") as z:
+            for name in update.FILES:
+                z.writestr("repo/"+name,"content")
+            z.writestr("repo/lib/pixi.min.js","graphics")
+            z.writestr("repo/assets/forest/grass.png","pixel")
+            z.writestr("repo/assets/keys.txt","secret")
+        with zipfile.ZipFile(io.BytesIO(stream.getvalue())) as z:
+            files=update.runtime_files(z)
+        self.assertIn("lib/pixi.min.js",files)
+        self.assertIn("assets/forest/grass.png",files)
+        self.assertIn("AETHERRA_START.ps1",files)
+        self.assertNotIn("assets/keys.txt",files)
+
     def test_rolls_back_existing_and_removes_new_files(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);backup=root/".aetherra_backup";backup.mkdir()
