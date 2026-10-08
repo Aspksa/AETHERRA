@@ -74,7 +74,10 @@ class Handler(SimpleHTTPRequestHandler):
             kwargs = {"cwd": str(ROOT), "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
             if sys.platform == "win32":
                 kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE
-            subprocess.Popen([sys.executable, str(ROOT / "update.py"), "install-restart"], **kwargs)
+            with (ROOT / "AETHERRA_UPDATE.log").open("a", encoding="utf-8") as update_log:
+                kwargs["stdout"] = update_log
+                kwargs["stderr"] = subprocess.STDOUT
+                subprocess.Popen([sys.executable, str(ROOT / "update.py"), "install-restart"], **kwargs)
             self._json(202, {"status": "updating"})
             Thread(target=self.server.shutdown, daemon=True).start()
         except Exception as exc:
