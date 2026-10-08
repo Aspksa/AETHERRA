@@ -13,6 +13,8 @@ jobs:
           python-version: "3.12"
       - name: Python unit tests
         run: python -m unittest discover -s tests -v
+      - name: Validate world spec references
+        run: python validate_spec.py assets/world-spec.json
       - name: Confirm launcher rejects missing interpreter with negative Windows exit code
         shell: pwsh
         run: |
