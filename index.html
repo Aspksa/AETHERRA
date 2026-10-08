@@ -23,6 +23,7 @@ footer{padding-top:16px;color:#96aba0;font-size:12px}label{display:block;font-si
 <script src="renderer.js"></script>
 <script src="planner.js"></script>
 <script src="building.js"></script>
+<script src="world.js"></script>
 <script>
 'use strict';
 const canvas=document.getElementById('world'),ctx=canvas.getContext('2d'),S=52,W=48,H=36;
@@ -34,7 +35,7 @@ function noise(x,y){return (Math.sin(x*.22+seed*.017)+Math.cos(y*.25-seed*.031)+
 let lastBirthCycle=0;
 const idx=(x,y)=>y*W+x, inside=(x,y)=>x>=0&&x<W&&y>=0&&y<H;
 function log(msg){events.unshift('День '+Math.floor(day)+': '+msg);events.length=Math.min(events.length,8);document.getElementById('events').innerHTML=events.map(e=>'<div class="event">'+escapeHtml(e)+'</div>').join('')}
-function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];berries=[];events=[];day=0;lastBirthCycle=0;trail=new Array(W*H).fill(0);inventions=[];structures=[];spoilAcc=0;stock={wood:0,food:100};selected=null;if(typeof centerCamera==='function')centerCamera();
+function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];berries=[];events=[];day=0;lastBirthCycle=0;trail=new Array(W*H).fill(0);deposits=[];signs=[];inventions=[];structures=[];spoilAcc=0;stock={wood:0,food:100};selected=null;if(typeof centerCamera==='function')centerCamera();
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const river=Math.abs(y-(17+4*Math.sin(x*.17+seed*.03)))<1.35;const n=noise(x,y)+rand()*.19;const water=river||n<-.66;const kind=water?'water':n>.63?'stone':n<-.32?'sand':'grass';tiles.push(kind);
 if(kind==='grass'&&rand()<.34&&!(x>13&&x<30&&y>7&&y<28))trees.push({x,y,wood:3+Math.floor(rand()*4)})}
 // Choose the largest connected landmass. All settlers and resources use this component.
@@ -71,6 +72,7 @@ const safeSpawn=spawnCells.length?spawnCells:grass;
 const names=['Артём','Мира','Лев','Алиса','Тим','Ника','Ян','Рада','Олег','Ева','Макс','Лада','Илья','Зоя','Роман','Вера','Марк','Ася','Данил','Соня'];
 for(let i=0;i<20;i++){const cell=safeSpawn[Math.floor(rand()*safeSpawn.length)],x=cell%W,y=Math.floor(cell/W);
 agents.push({id:uid++,name:names[i],x:x+.5,y:y+.5,age:18+Math.floor(rand()*35),state:'Исследует',target:null,carrying:0,energy:80+rand()*20,home:null,hunger:12+rand()*20,health:100,decision:'wood',nextDecision:0,foraging:null,experience:{wood:0,food:0},memory:[],traits:randomTraits()})}
+generateUnderground();
 log('Первые 20 жителей появились на планете');updatePanel()}
 function free(x,y){return inside(x,y)&&reachable[idx(x,y)]===1&&tiles[idx(x,y)]==='grass'&&!(x===depot.x&&y===depot.y)&&!trees.some(t=>t.wood>0&&t.x===x&&t.y===y)&&!homes.some(h=>Math.abs(h.x-x)<2&&Math.abs(h.y-y)<2)}
 function passable(x,y){return inside(x,y)&&tiles[idx(x,y)]!=='water'}
@@ -125,6 +127,159 @@ function remember(a,message){
  if(a.memory.length&&a.memory[0].endsWith(': '+message)){a.memory[0]=entry;return}
  a.memory.unshift(entry);a.memory.length=Math.min(a.memory.length,6);
 }
+// Underground (assets/world-spec.json): deposits hidden below the surface, signs that hint at them, and what residents
+// have learned. Without the spec file (for example when the page is opened straight from disk) the game runs without it.
+let worldSpec=null,deposits=[],signs=[];
+const hasWorld=()=>typeof AetherraWorld!=='undefined'&&worldSpec!==null;
+const resInfo=id=>worldSpec&&worldSpec.resources.find(r=>r.id===id);
+function generateUnderground(){
+ if(!hasWorld())return;
+ const g=AetherraWorld.generate(worldSpec,tiles,trees,W,H,seed);
+ deposits=g.deposits.filter(d=>reachable[idx(d.x,d.y)]===1);signs=g.signs.filter(t=>reachable[idx(t.x,t.y)]===1);
+}
+function attachSpec(spec){
+ if(!spec||!Array.isArray(spec.resources)||!Array.isArray(spec.signs)||!spec.geology||!Array.isArray(spec.races))return false;
+ worldSpec=spec;
+ if(!deposits.length&&!signs.length&&tiles.length)generateUnderground();
+ return true;
+}
+const HUMAN_CONCEPTS=()=>worldSpec.concepts.filter(c=>c.known_at_start).map(c=>c.id);
+const knowOf=a=>a.know||(a.know={});
+const knows=(a,res)=>{const r=resInfo(res);if(r&&r.known_at_start)return true;const k=a.know&&a.know[res];return !!k&&k.conf>=.6};
+function settlementKnows(res){return agents.some(a=>a.health>0&&knows(a,res))}
+function learnSignLink(a,res,sg){
+ const first=!agents.some(o=>o.health>0&&o.know&&o.know[res.id]);
+ const k=knowOf(a)[res.id]||(a.know[res.id]={conf:0,places:[]});
+ if(k.conf<.15)k.conf=.15;
+ if(!k.places.some(p=>p.x===sg.x&&p.y===sg.y)){k.places.unshift({x:sg.x,y:sg.y});k.places.length=Math.min(3,k.places.length)}
+ const name=(worldSpec.signs.find(t=>t.id===sg.sign)||{}).name_ru||sg.sign;
+ if(first)log(a.name+' заметил: '+name);
+ remember(a,'Заметил: '+name);
+}
+// Noticing: each decision tick a resident may spot a visible sign within 3 tiles; the chance comes from the spec formula.
+function noticeSigns(a){
+ if(!hasWorld()||a.age<16||!signs.length)return;
+ const night=isNight(),human=worldSpec.races.find(r=>r.id==='human'),concepts=HUMAN_CONCEPTS();
+ for(const sg of signs){
+  if(Math.abs(sg.x+.5-a.x)>3||Math.abs(sg.y+.5-a.y)>3||!AetherraWorld.signVisible(worldSpec,sg.sign,night))continue;
+  const cands=AetherraWorld.resourcesForSign(worldSpec,sg.sign).filter(r=>r.discovery&&r.min_tool==='hands'&&(r.discovery.needs_concepts||[]).every(c=>concepts.includes(c)));
+  if(!cands.length)continue;
+  let res=cands[Math.floor(rand()*cands.length)];
+  if(sg.real){const near=cands.filter(r=>deposits.some(d=>d.res===r.id&&Math.abs(d.x-sg.x)<=4&&Math.abs(d.y-sg.y)<=4));if(near.length)res=near[Math.floor(rand()*near.length)]}
+  if(knows(a,res.id))continue;
+  if(rand()>=AetherraWorld.noticeChance(worldSpec,res,sg.sign,human.perception,trait(a,'curiosity'),1.5))continue;
+  learnSignLink(a,res,sg);break;
+ }
+}
+// Very curious residents roam up to 16 tiles from the depot; walking is how signs get noticed.
+function planExplore(a){
+ if(!hasWorld()||a.age<16||a.explore||a.dig||a.extract||a.plan||a.carrying||trait(a,'curiosity')<.75||rand()>.04||stock.food<agents.length*3)return; // only the very curious, and never in a famine
+ for(let i=0;i<20;i++){
+  const x=Math.floor(depot.x+(rand()-.5)*32),y=Math.floor(depot.y+(rand()-.5)*32);
+  if(inside(x,y)&&reachable[idx(x,y)]===1){a.explore={x,y,t:0};return}
+ }
+}
+function exploreStep(a){
+ const t=a.explore;a.state='Исследует окрестности';move(a,t.x+.5,t.y+.5);
+ if(Math.hypot(a.x-t.x-.5,a.y-t.y-.5)<1||++t.t>250){a.explore=undefined;a.path=undefined;return false}
+ return true;
+}
+// A test pit at a remembered place reveals layers 0..1: a find confirms the belief, an empty pit weakens it.
+function planDig(a){
+ if(!hasWorld()||a.age<16||a.dig||a.extract||a.plan||!a.know||rand()>.35)return;
+ for(const [id,k] of Object.entries(a.know)){
+  if(k.conf>=.15&&k.conf<.6&&k.places.length){const p=k.places[0];a.dig={res:id,x:p.x,y:p.y,left:-1};return}
+ }
+}
+function digStep(a){
+ const d=a.dig,k=a.know&&a.know[d.res];
+ if(!k){a.dig=undefined;return false}
+ a.state='Пробная яма';
+ if(d.left<0){
+  move(a,d.x+.5,d.y+.5);
+  if(Math.hypot(a.x-d.x-.5,a.y-d.y-.5)<1.2)d.left=10;
+  return true;
+ }
+ if(--d.left>0)return true;
+ const found=deposits.find(t=>t.res===d.res&&t.depth<=1&&Math.abs(t.x-d.x)<=2&&Math.abs(t.y-d.y)<=2);
+ const was=k.conf;
+ if(found){k.conf=Math.min(1,k.conf+.25*1.5);k.places=[{x:found.x,y:found.y}]}
+ else{k.conf=Math.max(0,k.conf-.1);k.places.shift()}
+ if(!found&&(k.conf<=0||!k.places.length))delete a.know[d.res];
+ if(found&&was<.6&&k.conf>=.6){const r=resInfo(d.res);log(a.name+' подтвердил: '+r.name_ru+' есть на карте');remember(a,'Нашёл: '+r.name_ru)}
+ a.dig=undefined;a.path=undefined;
+ return false;
+}
+// Teaching: bonded neighbours working side by side pass on what they know at 60% of the teacher's confidence.
+function teachPair(a,b){
+ if(!a.know||rand()>.03)return;
+ for(const [id,k] of Object.entries(a.know)){
+  if(k.conf<.4||!k.places.length)continue;
+  const mine=knowOf(b)[id]||(b.know[id]={conf:0,places:[]});
+  if(mine.conf<k.conf*.6){mine.conf=k.conf*.6;mine.places=k.places.map(p=>({...p}));return}
+ }
+}
+const EXTRACT_NEED={
+ stone:()=>{const inv=pendingInvention();return !!inv&&inv.material==='stone'&&(stock.stone||0)<6},flint:()=>(stock.flint||0)<6,clay:()=>(stock.clay||0)<8,
+ salt:()=>stock.food>40&&(stock.salt||0)<10,gold:a=>trait(a,'curiosity')>.7&&(stock.gold||0)<5
+};
+function daysPerUnit(r,method,depth,skill){
+ const power=.5; // bare hands: tools are not made yet
+ return method.base_days_per_unit*r.hardness*(1+.6*depth)/(power*(1+skill/100));
+}
+function chooseMethod(r,depth){
+ let best=null;
+ for(const m of r.methods){
+  const spec=worldSpec.extraction_methods.find(e=>e.id===m);
+  if(!spec||spec.requires_structure||depth<spec.depth[0]||depth>spec.depth[1])continue;
+  if(!best||spec.base_days_per_unit<best.base_days_per_unit)best=spec;
+ }
+ return best;
+}
+function planExtraction(a){
+ if(!hasWorld()||a.age<16||a.extract||a.dig||a.plan||a.carrying||rand()>.3)return;
+ // Mining is a luxury: only while food and wood are comfortable, and never by more than two residents at once.
+ const living=agents.filter(p=>p.health>0).length;
+ if(stock.food<living*4||stock.wood<6||agents.filter(p=>p.extract).length>=2)return;
+ let pick=null;
+ for(const id of Object.keys(EXTRACT_NEED)){
+  const r=resInfo(id);
+  if(!r||r.min_tool!=='hands'||!knows(a,id)||!EXTRACT_NEED[id](a))continue;
+  const k=a.know&&a.know[id];
+  let best=null,bestDist=Infinity;
+  for(const t of deposits){
+   if(t.res!==id||t.amount<=0||!chooseMethod(r,t.depth))continue;
+   if(!r.known_at_start&&!(k&&k.places.some(p=>Math.abs(p.x-t.x)<=2&&Math.abs(p.y-t.y)<=2)))continue;
+   const dist=Math.abs(t.x+.5-a.x)+Math.abs(t.y+.5-a.y);
+   if(dist<bestDist){bestDist=dist;best=t}
+  }
+  if(best&&(!pick||bestDist<pick.dist))pick={res:id,x:best.x,y:best.y,depth:best.depth,dist:bestDist};
+ }
+ if(pick)a.extract={res:pick.res,x:pick.x,y:pick.y,depth:pick.depth,phase:'dig',prog:0,n:0};
+}
+function extractStep(a){
+ const e=a.extract,r=resInfo(e.res);
+ if(!r){a.extract=undefined;return false}
+ if(e.phase==='haul'){
+  a.state='Несёт: '+r.name_ru;move(a,depot.x+.5,depot.y+.5);
+  if(Math.hypot(a.x-depot.x-.5,a.y-depot.y-.5)<.45){stock[e.res]=(stock[e.res]||0)+e.n;a.extract=undefined;a.path=undefined}
+  return true;
+ }
+ const t=deposits.find(d=>d.res===e.res&&d.x===e.x&&d.y===e.y&&d.depth===e.depth);
+ if(!t||t.amount<=0){if(e.n>0){e.phase='haul';return true}a.extract=undefined;return false}
+ const m=chooseMethod(r,t.depth);
+ if(!m){a.extract=undefined;return false}
+ a.state=(m.id==='pan'?'Промывает: ':'Добывает: ')+r.name_ru;
+ move(a,e.x+.5,e.y+.5);
+ if(Math.hypot(a.x-e.x-.5,a.y-e.y-.5)>=.9)return true;
+ const skill=Math.min(100,(a.experience.mining||0));
+ e.prog+=.065/daysPerUnit(r,m,t.depth,skill)*(m.yield_mult||1);
+ while(e.prog>=1&&t.amount>0){e.prog-=1;t.amount-=1;e.n+=1;a.experience.mining=(a.experience.mining||0)+.5}
+ if(t.amount<=0)deposits.splice(deposits.indexOf(t),1);
+ if(e.n>=5||t.amount<=0&&e.n>0||!deposits.includes(t)&&e.n>0)e.phase='haul';
+ else if(!deposits.includes(t)&&e.n===0){a.extract=undefined;return false}
+ return true;
+}
 // Inventions: residents with an acute problem assemble a structure from bricks (function, material, place);
 // the whole village then builds it through the planner.
 let inventions=[],structures=[],spoilAcc=0;
@@ -143,7 +298,7 @@ function updateCold(a){
 }
 function decayFood(){
  // Stored food spoils slowly; drying racks and cellars slow it down.
- spoilAcc+=stock.food*.0002*rackFactor();
+ spoilAcc+=stock.food*.0002*rackFactor()/(1+Math.min(30,stock.salt||0)/10); // stored salt preserves food
  if(spoilAcc>=1){const lost=Math.floor(spoilAcc);stock.food=Math.max(0,stock.food-lost);spoilAcc-=lost}
 }
 function currentProblems(){
@@ -179,12 +334,14 @@ function pendingInvention(){
  }
  return pick;
 }
+// Stone structures use 6 stone from the store when there is enough, instead of 6 extra wood.
+function structureWoodCost(inv){return inv.material==='stone'&&(stock.stone||0)>=6?inv.cost-6:inv.cost}
 function planStructure(a){
  if(typeof AetherraPlanner==='undefined'||!a.home||a.age<16||a.planGoal==='hasHome')return;
  const inv=pendingInvention();
  if(!inv){if(a.planGoal==='hasStructure'){a.plan=undefined;a.planGoal=undefined;a.site=undefined;a.invId=undefined}return}
  if(a.planGoal!=='hasStructure'&&agents.some(o=>o!==a&&o.health>0&&o.planGoal==='hasStructure'))return;
- const steps=AetherraPlanner.plan({woodInHand:a.carrying>0,woodStocked:stock.wood>=inv.cost,hasStructure:false},{hasStructure:true});
+ const steps=AetherraPlanner.plan({woodInHand:a.carrying>0,woodStocked:stock.wood>=structureWoodCost(inv),hasStructure:false},{hasStructure:true});
  if(steps&&steps.length){a.plan=steps;a.planGoal='hasStructure';a.invId=inv.id}else{a.plan=undefined;a.planGoal=undefined}
 }
 function chooseStructureSite(inv){
@@ -200,12 +357,12 @@ function chooseStructureSite(inv){
 }
 function buildStructureStep(a){
  const inv=inventions.find(i=>i.id===a.invId);
- if(!inv||stock.wood<inv.cost){a.plan=undefined;a.planGoal=undefined;a.site=undefined;a.invId=undefined;return false}
+ if(!inv||stock.wood<structureWoodCost(inv)){a.plan=undefined;a.planGoal=undefined;a.site=undefined;a.invId=undefined;return false}
  if(!a.site||!free(a.site.x,a.site.y))a.site=chooseStructureSite(inv);
  if(!a.site)return false;
  a.state='Идёт строить: '+inv.name;move(a,a.site.x+.5,a.site.y+.5);
  if(Math.hypot(a.x-a.site.x-.5,a.y-a.site.y-.5)<.9){
-  stock.wood-=inv.cost;
+  if(inv.material==='stone'&&(stock.stone||0)>=6){stock.stone-=6;stock.wood-=inv.cost-6}else stock.wood-=inv.cost;
   structures.push({id:uid++,inv:inv.id,fn:inv.fn,material:inv.material,place:inv.place,x:a.site.x,y:a.site.y});
   a.plan=undefined;a.planGoal=undefined;a.site=undefined;a.invId=undefined;a.path=undefined;log(a.name+' построил: '+inv.name);
  }
@@ -260,7 +417,7 @@ function socialStep(){
   const a=workers[i],b=workers[j];
   if(Math.abs(a.x-b.x)>2.2||Math.abs(a.y-b.y)>2.2||Math.hypot(a.x-b.x,a.y-b.y)>2.2)continue;
   const gain=1.2*(.5+(trait(a,'sociability')+trait(b,'sociability'))/2);
-  const was=addBond(a,b,gain);addBond(b,a,gain);
+  const was=addBond(a,b,gain);addBond(b,a,gain);teachPair(a,b);teachPair(b,a);
   if(was<50&&bondOf(a,b.id)>=50)log(a.name+' и '+b.name+' подружились');
  }
 }
@@ -351,9 +508,16 @@ for(const a of agents){
   planHousing(a);
   considerInvention(a);
   planStructure(a);
+  noticeSigns(a);
+  planDig(a);
+  planExtraction(a);
+  planExplore(a);
  }
  if(a.plan&&a.plan[0]==='buildHome'&&buildHomeStep(a))continue;
  if(a.plan&&a.plan[0]==='buildStructure'&&buildStructureStep(a))continue;
+ if(a.dig&&digStep(a))continue;
+ if(a.extract&&extractStep(a))continue;
+ if(a.explore&&exploreStep(a))continue;
  if(a.decision==='food'){
   const b=targetBerries(a);
   if(b){
@@ -421,12 +585,16 @@ function worldSnapshot(){
    foragePos:a.foraging?{x:a.foraging.x,y:a.foraging.y}:null})),
   homes:homes.map(h=>({...h})),trees:trees.map(t=>({...t})),
   berries:berries.map(b=>({...b})),events:[...events],depot:{...depot},
-  reachable:Array.from(reachable),inventions:inventions.map(i=>({...i})),structures:structures.map(t=>({...t})),spoilAcc,
+  reachable:Array.from(reachable),inventions:inventions.map(i=>({...i})),structures:structures.map(t=>({...t})),spoilAcc,deposits:deposits.map(d=>({...d})),signs:signs.map(t=>({...t})),
   trail:Object.fromEntries(trail.map((v,i)=>[i,Math.round(v*10)/10]).filter(([,v])=>v>=.5))};
 }
 function validateSnapshot(data){
  if(!data||data.schema!==SAVE_SCHEMA)throw Error('Неподдерживаемый формат сохранения');
  const known=(v,list)=>list.includes(v);
+ const ID=/^[a-z_]{1,40}$/;
+ if(data.deposits!==undefined&&(!Array.isArray(data.deposits)||data.deposits.length>3000||!data.deposits.every(d=>d&&ID.test(d.res)&&Number.isInteger(d.x)&&Number.isInteger(d.y)&&inside(d.x,d.y)&&Number.isInteger(d.depth)&&d.depth>=0&&d.depth<=4&&Number.isFinite(d.amount)&&d.amount>=0&&d.amount<=1000)))throw Error('Повреждены недра');
+ if(data.signs!==undefined&&(!Array.isArray(data.signs)||data.signs.length>1500||!data.signs.every(t=>t&&ID.test(t.sign)&&Number.isInteger(t.x)&&Number.isInteger(t.y)&&inside(t.x,t.y)&&typeof t.real==='boolean')))throw Error('Повреждены признаки');
+ if(!Object.values(data.stock).every(v=>Number.isFinite(v)&&v>=0&&v<=1000000))throw Error('Некорректные ресурсы');
  const FNS=['warmth','preserve'],MATS=['wood','stone'],PLACES_=['depot','homes'];
  if(data.inventions!==undefined&&(!Array.isArray(data.inventions)||data.inventions.length>MAX_INVENTIONS||!data.inventions.every(i=>i&&Number.isInteger(i.id)&&known(i.fn,FNS)&&known(i.material,MATS)&&known(i.place,PLACES_)&&typeof i.name==='string'&&i.name.length<=60&&Number.isFinite(i.cost)&&i.cost>=0&&i.cost<=100&&typeof i.inventor==='string'&&i.inventor.length<=60&&Number.isFinite(i.day))))throw Error('Повреждены изобретения');
  if(data.structures!==undefined&&(!Array.isArray(data.structures)||data.structures.length>MAX_STRUCTURES||!data.structures.every(t=>t&&Number.isInteger(t.id)&&Number.isInteger(t.inv)&&known(t.fn,FNS)&&known(t.material,MATS)&&known(t.place,PLACES_)&&Number.isInteger(t.x)&&Number.isInteger(t.y)&&inside(t.x,t.y))))throw Error('Повреждены постройки');
@@ -440,7 +608,7 @@ function validateSnapshot(data){
  if(!Number.isFinite(data.day)||data.day<0||!Number.isInteger(data.rng)||data.rng<0||data.rng>4294967295||!Number.isInteger(data.uid)||data.uid<0||!Number.isFinite(data.seed))throw Error('Некорректное время или генератор');
  const pos=p=>p&&Number.isInteger(p.x)&&Number.isInteger(p.y)&&inside(p.x,p.y);
  if(!pos(data.depot)||data.reachable[idx(data.depot.x,data.depot.y)]!==1)throw Error('Некорректный склад');
- if(!data.agents.every(a=>Number.isInteger(a.id)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&inside(Math.floor(a.x),Math.floor(a.y))&&Number.isFinite(a.hunger)&&a.hunger>=0&&a.hunger<=100&&Number.isFinite(a.health)&&a.health>=0&&a.health<=100&&Number.isFinite(a.energy)&&a.energy>=0&&a.energy<=100&&Number.isFinite(a.carrying)&&a.carrying>=0&&a.experience&&Number.isFinite(a.experience.food)&&Number.isFinite(a.experience.wood)&&Array.isArray(a.memory)&&a.memory.length<=6&&a.memory.every(m=>typeof m==='string'&&m.length<=200)&&(a.bonds===undefined||a.bonds&&typeof a.bonds==='object'&&!Array.isArray(a.bonds)&&Object.keys(a.bonds).length<=12&&Object.entries(a.bonds).every(([id,v])=>/^\d{1,9}$/.test(id)&&Number.isFinite(v)&&v>=0&&v<=100))&&(a.traits===undefined||a.traits&&TRAITS.every(k=>Number.isFinite(a.traits[k])&&a.traits[k]>=0&&a.traits[k]<=1))&&(a.plan===undefined||a.plan===null||Array.isArray(a.plan)&&a.plan.length<=6&&a.plan.every(x=>['chop','deliver','buildHome','buildStructure'].includes(x)))&&(a.site==null||pos(a.site))&&(a.cold===undefined||Number.isFinite(a.cold)&&a.cold>=0&&a.cold<=100)&&(a.invId===undefined||a.invId===null||Number.isInteger(a.invId))&&typeof a.name==='string'&&a.name.length>=1&&a.name.length<=60&&(a.state===undefined||typeof a.state==='string'&&a.state.length<=80)))throw Error('Повреждены данные жителей');
+ if(!data.agents.every(a=>Number.isInteger(a.id)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&inside(Math.floor(a.x),Math.floor(a.y))&&Number.isFinite(a.hunger)&&a.hunger>=0&&a.hunger<=100&&Number.isFinite(a.health)&&a.health>=0&&a.health<=100&&Number.isFinite(a.energy)&&a.energy>=0&&a.energy<=100&&Number.isFinite(a.carrying)&&a.carrying>=0&&a.experience&&Number.isFinite(a.experience.food)&&Number.isFinite(a.experience.wood)&&Array.isArray(a.memory)&&a.memory.length<=6&&a.memory.every(m=>typeof m==='string'&&m.length<=200)&&(a.bonds===undefined||a.bonds&&typeof a.bonds==='object'&&!Array.isArray(a.bonds)&&Object.keys(a.bonds).length<=12&&Object.entries(a.bonds).every(([id,v])=>/^\d{1,9}$/.test(id)&&Number.isFinite(v)&&v>=0&&v<=100))&&(a.traits===undefined||a.traits&&TRAITS.every(k=>Number.isFinite(a.traits[k])&&a.traits[k]>=0&&a.traits[k]<=1))&&(a.plan===undefined||a.plan===null||Array.isArray(a.plan)&&a.plan.length<=6&&a.plan.every(x=>['chop','deliver','buildHome','buildStructure'].includes(x)))&&(a.site==null||pos(a.site))&&(a.know===undefined||a.know&&typeof a.know==='object'&&!Array.isArray(a.know)&&Object.keys(a.know).length<=12&&Object.entries(a.know).every(([id,k])=>ID.test(id)&&k&&Number.isFinite(k.conf)&&k.conf>=0&&k.conf<=1&&Array.isArray(k.places)&&k.places.length<=3&&k.places.every(p=>Number.isInteger(p.x)&&Number.isInteger(p.y)&&inside(p.x,p.y))))&&(a.explore==null||Number.isInteger(a.explore.x)&&Number.isInteger(a.explore.y)&&inside(a.explore.x,a.explore.y)&&Number.isFinite(a.explore.t))&&(a.dig==null||ID.test(a.dig.res)&&Number.isFinite(a.dig.x)&&Number.isFinite(a.dig.y)&&Number.isFinite(a.dig.left))&&(a.extract==null||ID.test(a.extract.res)&&Number.isInteger(a.extract.x)&&Number.isInteger(a.extract.y)&&Number.isInteger(a.extract.depth)&&['dig','haul'].includes(a.extract.phase)&&Number.isFinite(a.extract.prog)&&Number.isFinite(a.extract.n)&&a.extract.n>=0&&a.extract.n<=20)&&(a.cold===undefined||Number.isFinite(a.cold)&&a.cold>=0&&a.cold<=100)&&(a.invId===undefined||a.invId===null||Number.isInteger(a.invId))&&typeof a.name==='string'&&a.name.length>=1&&a.name.length<=60&&(a.state===undefined||typeof a.state==='string'&&a.state.length<=80)))throw Error('Повреждены данные жителей');
  if(!data.homes.every(h=>pos(h)&&Number.isInteger(h.id)&&(h.owner===undefined||typeof h.owner==='string'&&h.owner.length<=60))||!data.trees.every(t=>pos(t)&&Number.isFinite(t.wood)&&t.wood>=0)||!data.berries.every(b=>pos(b)&&Number.isFinite(b.food)&&b.food>=0))throw Error('Повреждены здания или природные ресурсы');
  if(!Array.isArray(data.events)||data.events.length>8||!data.events.every(e=>typeof e==='string'&&e.length<500))throw Error('Повреждена история мира');
 }
@@ -450,7 +618,8 @@ function restoreWorld(data){
  tiles=[...data.tiles];homes=data.homes.map(h=>({...h}));trees=data.trees.map(t=>({...t}));
  berries=data.berries.map(b=>({...b}));events=[...data.events];depot={...data.depot};
  reachable=Uint8Array.from(data.reachable);
-inventions=(data.inventions||[]).map(i=>({...i}));structures=(data.structures||[]).map(t=>({...t}));spoilAcc=data.spoilAcc||0;
+inventions=(data.inventions||[]).map(i=>({...i}));structures=(data.structures||[]).map(t=>({...t}));spoilAcc=data.spoilAcc||0;deposits=(data.deposits||[]).map(d=>({...d}));signs=(data.signs||[]).map(t=>({...t}));
+if(hasWorld()&&!deposits.length&&!signs.length)generateUnderground();
 trail=new Array(W*H).fill(0);if(data.trail)for(const [i,v] of Object.entries(data.trail))trail[+i]=v;
  agents=data.agents.map(a=>{
   const copy={...a,bonds:a.bonds?{...a.bonds}:{},traits:Object.fromEntries(TRAITS.map(k=>[k,trait(a,k)])),memory:[...a.memory],experience:{...a.experience},path:a.path?a.path.map(p=>({...p})):undefined,goal:a.goal??undefined};
@@ -480,13 +649,15 @@ function loadWorld(){
   return true;
  }catch(e){document.getElementById('saveStatus').textContent='Ошибка загрузки: '+e.message;return false}
 }
-function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Изобретения',inventions.length],['Время',isNight()?'🌙 ночь':'☀ день'],['Дети',agents.filter(a=>a.health>0&&a.age<16).length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
+function visibleSigns(){if(!hasWorld())return [];const night=isNight();return signs.filter(t=>AetherraWorld.signVisible(worldSpec,t.sign,night))}
+function knownSpots(){const out=new Map();for(const a of agents)if(a.health>0&&a.know)for(const [id,k] of Object.entries(a.know))if(k.conf>=.6&&!(resInfo(id)||{}).known_at_start)for(const p of k.places)out.set(id+':'+p.x+':'+p.y,{res:id,x:p.x,y:p.y});return [...out.values()]}
+function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Изобретения',inventions.length],['Знания',hasWorld()?worldSpec.resources.filter(r=>!r.known_at_start&&settlementKnows(r.id)).length:'—'],['Камень',stock.stone||0],['Соль',stock.salt||0],['Время',isNight()?'🌙 ночь':'☀ день'],['Дети',agents.filter(a=>a.health>0&&a.age<16).length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
 if(selected){let o=selected.type==='agent'?agents.find(a=>a.id===selected.id):homes.find(h=>h.id===selected.id);
-document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+escapeHtml(o.name)+'</b><br>Возраст: '+Math.floor(o.age)+'<br>Действие: '+escapeHtml(o.state)+'<br>Энергия: '+Math.round(o.energy)+'%<br>Голод: '+Math.round(o.hunger)+'%<br>Здоровье: '+Math.round(o.health)+'%<br>Навык добычи: '+o.experience.wood+'<br>Сбор пищи: '+o.experience.food+'<br>Друзья: '+(Object.entries(o.bonds||{}).sort((x,y)=>y[1]-x[1]).slice(0,3).map(([id,v])=>{const f=agents.find(z=>z.id===+id);return f?escapeHtml(f.name)+' '+Math.round(v):null}).filter(Boolean).join(', ')||'пока нет')+'<br>Характер: '+TRAITS.map(k=>TRAIT_LABELS[k]+' '+Math.round(trait(o,k)*100)+'%').join(', ')+'<br>Память: '+escapeHtml(o.memory.slice(0,3).join('; '))+'<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+escapeHtml(o.owner)+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
+document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+escapeHtml(o.name)+'</b><br>Возраст: '+Math.floor(o.age)+'<br>Действие: '+escapeHtml(o.state)+'<br>Энергия: '+Math.round(o.energy)+'%<br>Голод: '+Math.round(o.hunger)+'%<br>Здоровье: '+Math.round(o.health)+'%<br>Навык добычи: '+o.experience.wood+'<br>Сбор пищи: '+o.experience.food+'<br>Знает: '+(Object.entries(o.know||{}).filter(([,k])=>k.conf>=.6).map(([id])=>escapeHtml((resInfo(id)||{name_ru:id}).name_ru)).join(', ')||'ничего нового')+'<br>Друзья: '+(Object.entries(o.bonds||{}).sort((x,y)=>y[1]-x[1]).slice(0,3).map(([id,v])=>{const f=agents.find(z=>z.id===+id);return f?escapeHtml(f.name)+' '+Math.round(v):null}).filter(Boolean).join(', ')||'пока нет')+'<br>Характер: '+TRAITS.map(k=>TRAIT_LABELS[k]+' '+Math.round(trait(o,k)*100)+'%').join(', ')+'<br>Память: '+escapeHtml(o.memory.slice(0,3).join('; '))+'<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+escapeHtml(o.owner)+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
 function centerCamera(){const w=canvas.clientWidth||900,h=canvas.clientHeight||540;scale=Math.max(.45,Math.min(1,Math.min(w/(26*S),h/(18*S))));ox=w/2-(depot.x+.5)*S*scale;oy=h/2-(depot.y+.5)*S*scale}
 function size(){const r=canvas.getBoundingClientRect(),d=window.devicePixelRatio||1;canvas.width=Math.round(r.width*d);canvas.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0)}
 function draw(){
- AetherraRenderer.render(ctx,{structures,daylight:daylight(day),canvas,trail,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy});
+ AetherraRenderer.render(ctx,{signs:visibleSigns(),spots:knownSpots(),structures,daylight:daylight(day),canvas,trail,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy});
  requestAnimationFrame(draw);
 }
 function clickAt(e){let r=canvas.getBoundingClientRect(),x=(e.clientX-r.left-ox)/scale/S,y=(e.clientY-r.top-oy)/scale/S;
@@ -626,5 +797,7 @@ if(location.protocol==='file:'){
  alertBox.textContent='⚠ AETHERRA открыта без Python-сервера: Cloud.ru и проверка обновлений недоступны. Запустите AETHERRA.bat и используйте адрес http://127.0.0.1:8765/';
  document.querySelector('header').insertAdjacentElement('afterend',alertBox);
 }
-window.addEventListener('resize',size);size();createWorld();loadWorld();draw();setInterval(()=>{if(!paused)for(let i=0;i<speed;i++)step();updatePanel()},120);setInterval(saveWorld,30000);
+window.addEventListener('resize',size);size();createWorld();loadWorld();draw();
+fetch('assets/world-spec.json').then(r=>r.ok?r.json():null).then(spec=>{if(spec&&attachSpec(spec))updatePanel()}).catch(()=>{}); // opened from disk: no spec, no underground
+setInterval(()=>{if(!paused)for(let i=0;i<speed;i++)step();updatePanel()},120);setInterval(saveWorld,30000);
 </script></body></html>
