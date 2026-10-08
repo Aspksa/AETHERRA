@@ -54,6 +54,35 @@ foreach ($exe in $candidates) {
         Write-Log "Candidate failed: $($_.Exception.Message)"
     }
 }
+# No working Python anywhere: fetch the official embeddable package into .\python (no admin rights needed).
+if (-not $selected -and $env:AETHERRA_NO_DOWNLOAD -ne '1' -and [Environment]::Is64BitOperatingSystem) {
+    $pyVersion = '3.12.8'
+    $zipUrl = "https://www.python.org/ftp/python/$pyVersion/python-$pyVersion-embed-amd64.zip"
+    $zipPath = Join-Path $env:TEMP "aetherra-python-$pyVersion.zip"
+    $pyDir = Join-Path $root 'python'
+    Write-Host "No working Python found. Downloading portable Python $pyVersion (about 10 MB)..." -ForegroundColor Yellow
+    Write-Log "Downloading $zipUrl"
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        $ProgressPreference = 'SilentlyContinue'
+        Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing -TimeoutSec 120
+        if (Test-Path -LiteralPath $pyDir) { Remove-Item -LiteralPath $pyDir -Recurse -Force }
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $pyDir -Force
+        $portable = Join-Path $pyDir 'python.exe'
+        $result = & $portable -c "print('AETHERRA_PYTHON_OK')" 2>&1 | Out-String
+        if ($LASTEXITCODE -eq 0 -and $result.Trim() -eq 'AETHERRA_PYTHON_OK') {
+            $selected = $portable
+            Write-Log 'Portable Python installed and verified.'
+        } else {
+            Write-Log "Portable Python failed the probe: exit=$LASTEXITCODE output=$($result.Trim())"
+        }
+    } catch {
+        Write-Log "Portable Python download failed: $($_.Exception.Message)"
+        Write-Host "Download failed: $($_.Exception.Message)" -ForegroundColor Red
+    } finally {
+        Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+    }
+}
 if (-not $selected) {
     Write-Host 'ERROR: No working Python interpreter was found.' -ForegroundColor Red
     Write-Host 'Your Windows Python commands may point to a deleted Python314 installation.'
