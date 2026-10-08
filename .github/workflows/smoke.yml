@@ -28,3 +28,4 @@ jobs:
         run: |
           node tests/check-inline-js.mjs
           node tests/water-path.mjs
+          node tests/server-mode.mjs
