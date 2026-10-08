@@ -1,0 +1,2734 @@
+{
+ "meta": {
+  "id": "aetherra-world-spec",
+  "version": "0.1.0",
+  "language_names": "ru",
+  "purpose": "Data for AETHERRA: geology, resources (real + fantastic), signs, discovery, prospecting, extraction, tools, races, knowledge, conflict. No LLM, no player input: all behaviour comes from these rules.",
+  "path_in_repo": "assets/world-spec.json",
+  "units": {
+   "depth": "layer index 0..4 (0 = surface, 4 = deepest)",
+   "hardness": "1..10, time to extract one unit scales with hardness / tool.power",
+   "rarity": "0..1, share of eligible cells that receive a deposit",
+   "chance": "probability per resident-day unless stated otherwise",
+   "confidence": "0..1, belief strength inside one resident's knowledge",
+   "time": "game days (1 day = 1 / 0.065 ticks)"
+  },
+  "conventions": [
+   "ids are snake_case and never renamed; add new entries instead",
+   "every reference (biome, rock, sign, resource, tool, race, method, action) must exist in this file",
+   "fantastic = true marks resources that do not exist in the real world",
+   "nothing is known at world start: residents begin with only knowledge listed in races[].starting_knowledge"
+  ]
+ },
+ "biomes": [
+  {
+   "id": "plains",
+   "name_ru": "Равнина",
+   "surface": "grass",
+   "passable": true
+  },
+  {
+   "id": "forest",
+   "name_ru": "Лес",
+   "surface": "grass",
+   "passable": true
+  },
+  {
+   "id": "hills",
+   "name_ru": "Холмы",
+   "surface": "grass",
+   "passable": true
+  },
+  {
+   "id": "mountains",
+   "name_ru": "Горы",
+   "surface": "stone",
+   "passable": true,
+   "move_cost": 2.5
+  },
+  {
+   "id": "river_bank",
+   "name_ru": "Берег реки",
+   "surface": "sand",
+   "passable": true
+  },
+  {
+   "id": "lake_shore",
+   "name_ru": "Берег озера",
+   "surface": "sand",
+   "passable": true
+  },
+  {
+   "id": "water",
+   "name_ru": "Вода",
+   "surface": "water",
+   "passable": false
+  },
+  {
+   "id": "swamp",
+   "name_ru": "Болото",
+   "surface": "mud",
+   "passable": true,
+   "move_cost": 2.0
+  },
+  {
+   "id": "steppe",
+   "name_ru": "Степь",
+   "surface": "dry_grass",
+   "passable": true
+  },
+  {
+   "id": "volcanic",
+   "name_ru": "Пепельные земли",
+   "surface": "ash",
+   "passable": true,
+   "move_cost": 1.5
+  },
+  {
+   "id": "crystal_hollow",
+   "name_ru": "Кристальная лощина",
+   "surface": "stone",
+   "passable": true,
+   "fantastic": true
+  }
+ ],
+ "overlays": [
+  {
+   "id": "ley_line",
+   "name_ru": "Жила эфира",
+   "fantastic": true,
+   "generation": {
+    "type": "noise_ridge",
+    "count_range": [
+     1,
+     3
+    ],
+    "width_cells": 2
+   },
+   "effect": "raises aether_crystal and moonsilver chance within 4 cells; invisible to residents"
+  },
+  {
+   "id": "meteor_crater",
+   "name_ru": "Звёздный кратер",
+   "fantastic": true,
+   "generation": {
+    "type": "world_event",
+    "event": "meteor_fall",
+    "chance_per_year": 0.02,
+    "also_at_worldgen": [
+     0,
+     2
+    ]
+   },
+   "effect": "spawns star_iron at depth 0-1 in radius 2; leaves sign crater_glass"
+  }
+ ],
+ "geology": {
+  "layers_per_cell": 5,
+  "rocks": [
+   {
+    "id": "soil",
+    "name_ru": "Почва",
+    "hardness": 1
+   },
+   {
+    "id": "clay_bed",
+    "name_ru": "Глинистый слой",
+    "hardness": 1.5
+   },
+   {
+    "id": "sandstone",
+    "name_ru": "Песчаник",
+    "hardness": 3
+   },
+   {
+    "id": "limestone",
+    "name_ru": "Известняк",
+    "hardness": 4
+   },
+   {
+    "id": "granite",
+    "name_ru": "Гранит",
+    "hardness": 7
+   },
+   {
+    "id": "basalt",
+    "name_ru": "Базальт",
+    "hardness": 6
+   },
+   {
+    "id": "peat_bog",
+    "name_ru": "Торфяник",
+    "hardness": 1
+   },
+   {
+    "id": "crystal_rock",
+    "name_ru": "Кристальная порода",
+    "hardness": 8,
+    "fantastic": true
+   }
+  ],
+  "column_by_biome": {
+   "plains": [
+    "soil",
+    "clay_bed",
+    "sandstone",
+    "limestone",
+    "granite"
+   ],
+   "forest": [
+    "soil",
+    "soil",
+    "sandstone",
+    "limestone",
+    "granite"
+   ],
+   "hills": [
+    "soil",
+    "sandstone",
+    "limestone",
+    "granite",
+    "granite"
+   ],
+   "mountains": [
+    "granite",
+    "granite",
+    "granite",
+    "basalt",
+    "basalt"
+   ],
+   "river_bank": [
+    "soil",
+    "clay_bed",
+    "clay_bed",
+    "sandstone",
+    "limestone"
+   ],
+   "lake_shore": [
+    "soil",
+    "clay_bed",
+    "sandstone",
+    "limestone",
+    "granite"
+   ],
+   "swamp": [
+    "peat_bog",
+    "peat_bog",
+    "clay_bed",
+    "sandstone",
+    "limestone"
+   ],
+   "steppe": [
+    "soil",
+    "sandstone",
+    "sandstone",
+    "limestone",
+    "granite"
+   ],
+   "volcanic": [
+    "soil",
+    "basalt",
+    "basalt",
+    "basalt",
+    "granite"
+   ],
+   "crystal_hollow": [
+    "soil",
+    "crystal_rock",
+    "crystal_rock",
+    "granite",
+    "granite"
+   ],
+   "water": [
+    "clay_bed",
+    "sandstone",
+    "limestone",
+    "granite",
+    "granite"
+   ]
+  },
+  "deposit_shapes": {
+   "surface": "scattered single cells at depth 0",
+   "placer": "along water downstream of a source deposit; depth 0",
+   "pocket": "blob of 1-4 cells",
+   "vein": "random walk of 4-12 cells, depth may change by 1 per step",
+   "layer": "wide flat sheet of 10-40 cells at one depth"
+  }
+ },
+ "signs": [
+  {
+   "id": "knapped_shards",
+   "name_ru": "Острые осколки у камней",
+   "visibility": "always",
+   "notice_difficulty": 0.1,
+   "false_rate": 0.05
+  },
+  {
+   "id": "sticky_mud",
+   "name_ru": "Липкая грязь у воды",
+   "visibility": "always",
+   "notice_difficulty": 0.1,
+   "false_rate": 0.1
+  },
+  {
+   "id": "green_stain",
+   "name_ru": "Зелёные пятна на скалах",
+   "visibility": "day",
+   "notice_difficulty": 0.35,
+   "false_rate": 0.2
+  },
+  {
+   "id": "rusty_stream",
+   "name_ru": "Рыжий ручей",
+   "visibility": "day",
+   "notice_difficulty": 0.3,
+   "false_rate": 0.15
+  },
+  {
+   "id": "red_soil",
+   "name_ru": "Рыжая земля",
+   "visibility": "day",
+   "notice_difficulty": 0.4,
+   "false_rate": 0.35
+  },
+  {
+   "id": "black_crumbs",
+   "name_ru": "Чёрная крошка в обрыве",
+   "visibility": "day",
+   "notice_difficulty": 0.45,
+   "false_rate": 0.15
+  },
+  {
+   "id": "white_crust",
+   "name_ru": "Белый налёт на земле",
+   "visibility": "dry_season",
+   "notice_difficulty": 0.3,
+   "false_rate": 0.1
+  },
+  {
+   "id": "glitter_sand",
+   "name_ru": "Блестящий песок в реке",
+   "visibility": "day",
+   "notice_difficulty": 0.5,
+   "false_rate": 0.4
+  },
+  {
+   "id": "heavy_dark_pebbles",
+   "name_ru": "Тяжёлые тёмные камешки",
+   "visibility": "day",
+   "notice_difficulty": 0.55,
+   "false_rate": 0.3
+  },
+  {
+   "id": "black_glass",
+   "name_ru": "Чёрное стекло на склонах",
+   "visibility": "always",
+   "notice_difficulty": 0.2,
+   "false_rate": 0.05
+  },
+  {
+   "id": "rotten_egg_smell",
+   "name_ru": "Запах тухлых яиц",
+   "visibility": "always",
+   "notice_difficulty": 0.25,
+   "false_rate": 0.1
+  },
+  {
+   "id": "springy_ground",
+   "name_ru": "Пружинящая бурая земля",
+   "visibility": "always",
+   "notice_difficulty": 0.2,
+   "false_rate": 0.1
+  },
+  {
+   "id": "night_glow",
+   "name_ru": "Свечение по ночам",
+   "visibility": "night",
+   "notice_difficulty": 0.3,
+   "false_rate": 0.25,
+   "fantastic": true
+  },
+  {
+   "id": "humming_stones",
+   "name_ru": "Гудящие камни",
+   "visibility": "always",
+   "notice_difficulty": 0.6,
+   "false_rate": 0.3,
+   "fantastic": true
+  },
+  {
+   "id": "silver_frost",
+   "name_ru": "Серебристый иней в полнолуние",
+   "visibility": "full_moon",
+   "notice_difficulty": 0.5,
+   "false_rate": 0.2,
+   "fantastic": true
+  },
+  {
+   "id": "crater_glass",
+   "name_ru": "Оплавленная воронка",
+   "visibility": "always",
+   "notice_difficulty": 0.05,
+   "false_rate": 0.0,
+   "fantastic": true
+  },
+  {
+   "id": "warm_ground",
+   "name_ru": "Тёплая земля, где тает снег",
+   "visibility": "winter",
+   "notice_difficulty": 0.3,
+   "false_rate": 0.15,
+   "fantastic": true
+  },
+  {
+   "id": "whispering_reeds",
+   "name_ru": "Шепчущий тростник",
+   "visibility": "night",
+   "notice_difficulty": 0.55,
+   "false_rate": 0.35,
+   "fantastic": true
+  },
+  {
+   "id": "birds_avoid",
+   "name_ru": "Птицы облетают место",
+   "visibility": "day",
+   "notice_difficulty": 0.65,
+   "false_rate": 0.5
+  }
+ ],
+ "resources": [
+  {
+   "id": "stone",
+   "name_ru": "Камень",
+   "tier": 0,
+   "fantastic": false,
+   "category": "material",
+   "host": {
+    "biomes": [
+     "hills",
+     "mountains",
+     "river_bank",
+     "steppe"
+    ],
+    "rocks": [
+     "sandstone",
+     "limestone",
+     "granite",
+     "basalt"
+    ]
+   },
+   "shape": "surface",
+   "depth": [
+    0,
+    4
+   ],
+   "rarity": 0.25,
+   "hardness": 3,
+   "amount": [
+    5,
+    20
+   ],
+   "signs": [],
+   "known_at_start": true,
+   "methods": [
+    "gather",
+    "quarry"
+   ],
+   "min_tool": "hands",
+   "uses": [
+    "build",
+    "tool_head_basic",
+    "weight"
+   ]
+  },
+  {
+   "id": "flint",
+   "name_ru": "Кремень",
+   "tier": 0,
+   "fantastic": false,
+   "category": "material",
+   "host": {
+    "biomes": [
+     "hills",
+     "river_bank",
+     "plains"
+    ],
+    "rocks": [
+     "limestone"
+    ]
+   },
+   "shape": "pocket",
+   "depth": [
+    0,
+    1
+   ],
+   "rarity": 0.06,
+   "hardness": 5,
+   "amount": [
+    4,
+    12
+   ],
+   "signs": [
+    {
+     "sign": "knapped_shards",
+     "radius": 1,
+     "reliability": 0.8
+    }
+   ],
+   "methods": [
+    "gather",
+    "dig"
+   ],
+   "min_tool": "hands",
+   "uses": [
+    "edge",
+    "fire_start",
+    "tool_head_basic"
+   ],
+   "discovery": {
+    "base_notice": 0.08,
+    "needs_concepts": []
+   }
+  },
+  {
+   "id": "clay",
+   "name_ru": "Глина",
+   "tier": 0,
+   "fantastic": false,
+   "category": "material",
+   "host": {
+    "biomes": [
+     "river_bank",
+     "lake_shore",
+     "swamp"
+    ],
+    "rocks": [
+     "clay_bed"
+    ]
+   },
+   "shape": "layer",
+   "depth": [
+    0,
+    2
+   ],
+   "rarity": 0.3,
+   "hardness": 1.5,
+   "amount": [
+    20,
+    60
+   ],
+   "signs": [
+    {
+     "sign": "sticky_mud",
+     "radius": 1,
+     "reliability": 0.85
+    }
+   ],
+   "methods": [
+    "dig"
+   ],
+   "min_tool": "hands",
+   "uses": [
+    "pottery",
+    "brick",
+    "mould",
+    "seal"
+   ],
+   "discovery": {
+    "base_notice": 0.1,
+    "needs_concepts": []
+   }
+  },
+  {
+   "id": "peat",
+   "name_ru": "Торф",
+   "tier": 1,
+   "fantastic": false,
+   "category": "fuel",
+   "host": {
+    "biomes": [
+     "swamp"
+    ],
+    "rocks": [
+     "peat_bog"
+    ]
+   },
+   "shape": "layer",
+   "depth": [
+    0,
+    1
+   ],
+   "rarity": 0.5,
+   "hardness": 1,
+   "amount": [
+    30,
+    80
+   ],
+   "signs": [
+    {
+     "sign": "springy_ground",
+     "radius": 0,
+     "reliability": 0.8
+    }
+   ],
+   "methods": [
+    "dig"
+   ],
+   "min_tool": "hands",
+   "uses": [
+    "fuel_low",
+    "insulation"
+   ],
+   "discovery": {
+    "base_notice": 0.04,
+    "needs_concepts": [
+     "concept_fire"
+    ]
+   }
+  },
+  {
+   "id": "salt",
+   "name_ru": "Соль",
+   "tier": 1,
+   "fantastic": false,
+   "category": "food_support",
+   "host": {
+    "biomes": [
+     "steppe",
+     "swamp",
+     "lake_shore"
+    ],
+    "rocks": [
+     "soil",
+     "sandstone"
+    ]
+   },
+   "shape": "pocket",
+   "depth": [
+    0,
+    1
+   ],
+   "rarity": 0.05,
+   "hardness": 2,
+   "amount": [
+    10,
+    40
+   ],
+   "signs": [
+    {
+     "sign": "white_crust",
+     "radius": 1,
+     "reliability": 0.75
+    }
+   ],
+   "methods": [
+    "gather",
+    "dig"
+   ],
+   "min_tool": "hands",
+   "uses": [
+    "preserve_food",
+    "trade_good",
+    "health"
+   ],
+   "discovery": {
+    "base_notice": 0.05,
+    "needs_concepts": []
+   }
+  },
+  {
+   "id": "copper",
+   "name_ru": "Медная руда",
+   "tier": 2,
+   "fantastic": false,
+   "category": "ore",
+   "host": {
+    "biomes": [
+     "hills",
+     "mountains"
+    ],
+    "rocks": [
+     "limestone",
+     "granite"
+    ]
+   },
+   "shape": "vein",
+   "depth": [
+    0,
+    3
+   ],
+   "rarity": 0.04,
+   "hardness": 4,
+   "amount": [
+    15,
+    60
+   ],
+   "signs": [
+    {
+     "sign": "green_stain",
+     "radius": 3,
+     "reliability": 0.7
+    }
+   ],
+   "methods": [
+    "dig",
+    "mine"
+   ],
+   "min_tool": "stone",
+   "smelt": {
+    "fuel": [
+     "wood",
+     "charcoal",
+     "peat"
+    ],
+    "heat": 2
+   },
+   "uses": [
+    "metal_soft",
+    "tool_head_metal",
+    "ornament"
+   ],
+   "discovery": {
+    "base_notice": 0.03,
+    "needs_concepts": [
+     "concept_fire"
+    ]
+   }
+  },
+  {
+   "id": "tin",
+   "name_ru": "Оловянная руда",
+   "tier": 2,
+   "fantastic": false,
+   "category": "ore",
+   "host": {
+    "biomes": [
+     "hills",
+     "mountains",
+     "river_bank"
+    ],
+    "rocks": [
+     "granite"
+    ]
+   },
+   "shape": "vein",
+   "depth": [
+    1,
+    3
+   ],
+   "rarity": 0.02,
+   "hardness": 5,
+   "amount": [
+    10,
+    30
+   ],
+   "signs": [
+    {
+     "sign": "heavy_dark_pebbles",
+     "radius": 4,
+     "reliability": 0.55
+    }
+   ],
+   "methods": [
+    "pan",
+    "mine"
+   ],
+   "min_tool": "copper",
+   "smelt": {
+    "fuel": [
+     "charcoal"
+    ],
+    "heat": 2
+   },
+   "uses": [
+    "alloy_bronze"
+   ],
+   "discovery": {
+    "base_notice": 0.015,
+    "needs_concepts": [
+     "concept_smelting"
+    ]
+   }
+  },
+  {
+   "id": "coal",
+   "name_ru": "Уголь",
+   "tier": 3,
+   "fantastic": false,
+   "category": "fuel",
+   "host": {
+    "biomes": [
+     "plains",
+     "hills",
+     "steppe"
+    ],
+    "rocks": [
+     "sandstone",
+     "limestone"
+    ]
+   },
+   "shape": "layer",
+   "depth": [
+    1,
+    4
+   ],
+   "rarity": 0.08,
+   "hardness": 3,
+   "amount": [
+    40,
+    150
+   ],
+   "signs": [
+    {
+     "sign": "black_crumbs",
+     "radius": 2,
+     "reliability": 0.7
+    }
+   ],
+   "methods": [
+    "dig",
+    "mine"
+   ],
+   "min_tool": "copper",
+   "uses": [
+    "fuel_high",
+    "smelt_iron"
+   ],
+   "discovery": {
+    "base_notice": 0.02,
+    "needs_concepts": [
+     "concept_fire"
+    ]
+   }
+  },
+  {
+   "id": "iron",
+   "name_ru": "Железная руда",
+   "tier": 3,
+   "fantastic": false,
+   "category": "ore",
+   "host": {
+    "biomes": [
+     "hills",
+     "mountains",
+     "swamp"
+    ],
+    "rocks": [
+     "sandstone",
+     "granite",
+     "clay_bed"
+    ]
+   },
+   "shape": "vein",
+   "depth": [
+    1,
+    4
+   ],
+   "rarity": 0.05,
+   "hardness": 6,
+   "amount": [
+    20,
+    90
+   ],
+   "signs": [
+    {
+     "sign": "rusty_stream",
+     "radius": 4,
+     "reliability": 0.65
+    },
+    {
+     "sign": "red_soil",
+     "radius": 2,
+     "reliability": 0.45
+    }
+   ],
+   "methods": [
+    "dig",
+    "mine"
+   ],
+   "min_tool": "bronze",
+   "smelt": {
+    "fuel": [
+     "charcoal",
+     "coal"
+    ],
+    "heat": 3
+   },
+   "uses": [
+    "metal_hard",
+    "tool_head_metal",
+    "weapon",
+    "structure"
+   ],
+   "discovery": {
+    "base_notice": 0.012,
+    "needs_concepts": [
+     "concept_smelting"
+    ]
+   }
+  },
+  {
+   "id": "gold",
+   "name_ru": "Золото",
+   "tier": 3,
+   "fantastic": false,
+   "category": "precious",
+   "host": {
+    "biomes": [
+     "mountains",
+     "river_bank"
+    ],
+    "rocks": [
+     "granite"
+    ]
+   },
+   "shape": "placer",
+   "depth": [
+    0,
+    0
+   ],
+   "rarity": 0.015,
+   "hardness": 2,
+   "amount": [
+    3,
+    12
+   ],
+   "source_shape": {
+    "shape": "vein",
+    "depth": [
+     2,
+     4
+    ],
+    "rarity": 0.01
+   },
+   "signs": [
+    {
+     "sign": "glitter_sand",
+     "radius": 0,
+     "reliability": 0.5
+    }
+   ],
+   "methods": [
+    "pan",
+    "mine"
+   ],
+   "min_tool": "hands",
+   "uses": [
+    "ornament",
+    "trade_good",
+    "status"
+   ],
+   "discovery": {
+    "base_notice": 0.02,
+    "needs_concepts": []
+   }
+  },
+  {
+   "id": "obsidian",
+   "name_ru": "Обсидиан",
+   "tier": 1,
+   "fantastic": false,
+   "category": "material",
+   "host": {
+    "biomes": [
+     "volcanic"
+    ],
+    "rocks": [
+     "basalt"
+    ]
+   },
+   "shape": "surface",
+   "depth": [
+    0,
+    1
+   ],
+   "rarity": 0.15,
+   "hardness": 5,
+   "amount": [
+    4,
+    15
+   ],
+   "signs": [
+    {
+     "sign": "black_glass",
+     "radius": 0,
+     "reliability": 0.9
+    }
+   ],
+   "methods": [
+    "gather"
+   ],
+   "min_tool": "hands",
+   "uses": [
+    "edge_sharp",
+    "ornament",
+    "mirror"
+   ],
+   "discovery": {
+    "base_notice": 0.1,
+    "needs_concepts": []
+   }
+  },
+  {
+   "id": "sulfur",
+   "name_ru": "Сера",
+   "tier": 3,
+   "fantastic": false,
+   "category": "mineral",
+   "host": {
+    "biomes": [
+     "volcanic",
+     "swamp"
+    ],
+    "rocks": [
+     "basalt",
+     "peat_bog"
+    ]
+   },
+   "shape": "pocket",
+   "depth": [
+    0,
+    2
+   ],
+   "rarity": 0.05,
+   "hardness": 2,
+   "amount": [
+    5,
+    25
+   ],
+   "signs": [
+    {
+     "sign": "rotten_egg_smell",
+     "radius": 2,
+     "reliability": 0.7
+    }
+   ],
+   "methods": [
+    "gather",
+    "dig"
+   ],
+   "min_tool": "hands",
+   "hazard": {
+    "type": "fumes",
+    "chance_per_unit": 0.01,
+    "effect": "health-5"
+   },
+   "uses": [
+    "medicine",
+    "pest_control",
+    "fire_bright"
+   ],
+   "discovery": {
+    "base_notice": 0.03,
+    "needs_concepts": []
+   }
+  },
+  {
+   "id": "aether_crystal",
+   "name_ru": "Эфирный кристалл",
+   "tier": 4,
+   "fantastic": true,
+   "category": "arcane",
+   "host": {
+    "biomes": [
+     "crystal_hollow",
+     "mountains"
+    ],
+    "rocks": [
+     "crystal_rock",
+     "granite"
+    ],
+    "near_overlay": {
+     "id": "ley_line",
+     "radius": 4
+    }
+   },
+   "shape": "pocket",
+   "depth": [
+    1,
+    4
+   ],
+   "rarity": 0.02,
+   "hardness": 8,
+   "amount": [
+    2,
+    8
+   ],
+   "signs": [
+    {
+     "sign": "night_glow",
+     "radius": 2,
+     "reliability": 0.6
+    },
+    {
+     "sign": "humming_stones",
+     "radius": 3,
+     "reliability": 0.5
+    }
+   ],
+   "methods": [
+    "mine"
+   ],
+   "min_tool": "iron",
+   "hazard": {
+    "type": "resonance_shock",
+    "chance_per_unit": 0.03,
+    "effect": "health-15"
+   },
+   "uses": [
+    "light_source",
+    "energy_store",
+    "arcane_focus"
+   ],
+   "lore_ru": "Сгустки эфира, из которого соткан мир AETHERRA.",
+   "discovery": {
+    "base_notice": 0.006,
+    "needs_concepts": [
+     "concept_night_watch"
+    ]
+   }
+  },
+  {
+   "id": "moonsilver",
+   "name_ru": "Лунное серебро",
+   "tier": 4,
+   "fantastic": true,
+   "category": "arcane_metal",
+   "host": {
+    "biomes": [
+     "mountains",
+     "lake_shore"
+    ],
+    "rocks": [
+     "granite",
+     "limestone"
+    ],
+    "near_overlay": {
+     "id": "ley_line",
+     "radius": 6
+    }
+   },
+   "shape": "vein",
+   "depth": [
+    2,
+    4
+   ],
+   "rarity": 0.01,
+   "hardness": 7,
+   "amount": [
+    5,
+    20
+   ],
+   "signs": [
+    {
+     "sign": "silver_frost",
+     "radius": 3,
+     "reliability": 0.65
+    }
+   ],
+   "methods": [
+    "mine"
+   ],
+   "min_tool": "iron",
+   "smelt": {
+    "fuel": [
+     "coal"
+    ],
+    "heat": 4,
+    "only_at": "full_moon"
+   },
+   "uses": [
+    "metal_light",
+    "tool_head_metal",
+    "ornament_sacred",
+    "status"
+   ],
+   "discovery": {
+    "base_notice": 0.004,
+    "needs_concepts": [
+     "concept_smelting",
+     "concept_moon_cycle"
+    ]
+   }
+  },
+  {
+   "id": "star_iron",
+   "name_ru": "Звёздное железо",
+   "tier": 4,
+   "fantastic": true,
+   "category": "arcane_metal",
+   "host": {
+    "biomes": [
+     "*"
+    ],
+    "near_overlay": {
+     "id": "meteor_crater",
+     "radius": 2
+    }
+   },
+   "shape": "pocket",
+   "depth": [
+    0,
+    1
+   ],
+   "rarity": 1.0,
+   "hardness": 9,
+   "amount": [
+    3,
+    10
+   ],
+   "signs": [
+    {
+     "sign": "crater_glass",
+     "radius": 2,
+     "reliability": 0.95
+    }
+   ],
+   "methods": [
+    "dig"
+   ],
+   "min_tool": "bronze",
+   "smelt": {
+    "fuel": [
+     "coal"
+    ],
+    "heat": 5
+   },
+   "uses": [
+    "metal_supreme",
+    "weapon",
+    "tool_head_metal",
+    "status"
+   ],
+   "lore_ru": "Падает с неба; место падения видно всем, но чем оно ценно, ещё надо понять.",
+   "discovery": {
+    "base_notice": 0.5,
+    "needs_concepts": [],
+    "value_understanding_needs": [
+     "concept_smelting"
+    ]
+   }
+  },
+  {
+   "id": "emberstone",
+   "name_ru": "Жар-камень",
+   "tier": 3,
+   "fantastic": true,
+   "category": "arcane_fuel",
+   "host": {
+    "biomes": [
+     "volcanic",
+     "hills"
+    ],
+    "rocks": [
+     "basalt"
+    ]
+   },
+   "shape": "pocket",
+   "depth": [
+    1,
+    3
+   ],
+   "rarity": 0.03,
+   "hardness": 5,
+   "amount": [
+    5,
+    20
+   ],
+   "signs": [
+    {
+     "sign": "warm_ground",
+     "radius": 1,
+     "reliability": 0.7
+    }
+   ],
+   "methods": [
+    "dig",
+    "mine"
+   ],
+   "min_tool": "copper",
+   "hazard": {
+    "type": "burn",
+    "chance_per_unit": 0.02,
+    "effect": "health-10"
+   },
+   "uses": [
+    "fuel_eternal",
+    "heating",
+    "smelt_any"
+   ],
+   "discovery": {
+    "base_notice": 0.01,
+    "needs_concepts": [
+     "concept_fire"
+    ]
+   }
+  },
+  {
+   "id": "glowmoss",
+   "name_ru": "Светомох",
+   "tier": 2,
+   "fantastic": true,
+   "category": "arcane_plant",
+   "host": {
+    "biomes": [
+     "forest",
+     "crystal_hollow",
+     "swamp"
+    ],
+    "rocks": [
+     "soil",
+     "peat_bog"
+    ]
+   },
+   "shape": "surface",
+   "depth": [
+    0,
+    0
+   ],
+   "rarity": 0.04,
+   "hardness": 1,
+   "amount": [
+    3,
+    10
+   ],
+   "regrow_per_day": 0.05,
+   "signs": [
+    {
+     "sign": "night_glow",
+     "radius": 0,
+     "reliability": 0.8
+    }
+   ],
+   "methods": [
+    "harvest"
+   ],
+   "min_tool": "hands",
+   "uses": [
+    "light_source",
+    "medicine",
+    "dye"
+   ],
+   "discovery": {
+    "base_notice": 0.03,
+    "needs_concepts": []
+   }
+  },
+  {
+   "id": "dreamroot",
+   "name_ru": "Сонный корень",
+   "tier": 2,
+   "fantastic": true,
+   "category": "arcane_plant",
+   "host": {
+    "biomes": [
+     "swamp"
+    ],
+    "rocks": [
+     "peat_bog"
+    ]
+   },
+   "shape": "pocket",
+   "depth": [
+    0,
+    1
+   ],
+   "rarity": 0.03,
+   "hardness": 1,
+   "amount": [
+    2,
+    6
+   ],
+   "regrow_per_day": 0.02,
+   "signs": [
+    {
+     "sign": "whispering_reeds",
+     "radius": 1,
+     "reliability": 0.6
+    }
+   ],
+   "methods": [
+    "harvest",
+    "dig"
+   ],
+   "min_tool": "hands",
+   "hazard": {
+    "type": "visions",
+    "chance_per_unit": 0.05,
+    "effect": "belief_random"
+   },
+   "uses": [
+    "medicine_strong",
+    "ritual",
+    "sleep_aid"
+   ],
+   "lore_ru": "Видения от корня рождают новые убеждения — иногда верные, чаще нет.",
+   "discovery": {
+    "base_notice": 0.01,
+    "needs_concepts": []
+   }
+  },
+  {
+   "id": "songstone",
+   "name_ru": "Певчий камень",
+   "tier": 3,
+   "fantastic": true,
+   "category": "arcane_material",
+   "host": {
+    "biomes": [
+     "hills",
+     "mountains",
+     "steppe"
+    ],
+    "rocks": [
+     "limestone",
+     "granite"
+    ]
+   },
+   "shape": "pocket",
+   "depth": [
+    0,
+    2
+   ],
+   "rarity": 0.015,
+   "hardness": 6,
+   "amount": [
+    3,
+    10
+   ],
+   "signs": [
+    {
+     "sign": "humming_stones",
+     "radius": 1,
+     "reliability": 0.7
+    },
+    {
+     "sign": "birds_avoid",
+     "radius": 2,
+     "reliability": 0.3
+    }
+   ],
+   "methods": [
+    "quarry",
+    "mine"
+   ],
+   "min_tool": "bronze",
+   "uses": [
+    "signal_far",
+    "ritual",
+    "build_sacred"
+   ],
+   "discovery": {
+    "base_notice": 0.008,
+    "needs_concepts": []
+   }
+  }
+ ],
+ "derived_materials": [
+  {
+   "id": "wood",
+   "name_ru": "Древесина",
+   "from": "trees",
+   "known_at_start": true
+  },
+  {
+   "id": "charcoal",
+   "name_ru": "Древесный уголь",
+   "from": {
+    "inputs": {
+     "wood": 3
+    },
+    "needs_concepts": [
+     "concept_charcoal"
+    ]
+   }
+  },
+  {
+   "id": "copper_metal",
+   "name_ru": "Медь",
+   "from": {
+    "inputs": {
+     "copper": 2
+    },
+    "fuel": 1,
+    "needs_concepts": [
+     "concept_smelting"
+    ]
+   }
+  },
+  {
+   "id": "bronze",
+   "name_ru": "Бронза",
+   "from": {
+    "inputs": {
+     "copper": 3,
+     "tin": 1
+    },
+    "fuel": 2,
+    "needs_concepts": [
+     "concept_alloy"
+    ]
+   }
+  },
+  {
+   "id": "iron_metal",
+   "name_ru": "Железо",
+   "from": {
+    "inputs": {
+     "iron": 3
+    },
+    "fuel": 3,
+    "needs_concepts": [
+     "concept_iron_working"
+    ]
+   }
+  },
+  {
+   "id": "star_steel",
+   "name_ru": "Звёздная сталь",
+   "from": {
+    "inputs": {
+     "star_iron": 2,
+     "iron": 1
+    },
+    "fuel": 4,
+    "needs_concepts": [
+     "concept_iron_working",
+     "concept_star_metal"
+    ]
+   },
+   "fantastic": true
+  },
+  {
+   "id": "moonsilver_metal",
+   "name_ru": "Лунный металл",
+   "from": {
+    "inputs": {
+     "moonsilver": 2
+    },
+    "fuel": 3,
+    "needs_concepts": [
+     "concept_smelting",
+     "concept_moon_cycle"
+    ]
+   },
+   "fantastic": true
+  }
+ ],
+ "tools": [
+  {
+   "id": "hands",
+   "name_ru": "Руками",
+   "power": 0.5,
+   "durability": null,
+   "made_from": null
+  },
+  {
+   "id": "stone",
+   "name_ru": "Каменный инструмент",
+   "power": 1.0,
+   "durability": 40,
+   "made_from": {
+    "stone": 1,
+    "wood": 1
+   },
+   "needs_concepts": [
+    "concept_tool"
+   ]
+  },
+  {
+   "id": "flint_tool",
+   "name_ru": "Кремнёвый инструмент",
+   "power": 1.3,
+   "durability": 30,
+   "made_from": {
+    "flint": 1,
+    "wood": 1
+   },
+   "needs_concepts": [
+    "concept_tool",
+    "concept_knapping"
+   ]
+  },
+  {
+   "id": "copper",
+   "name_ru": "Медный инструмент",
+   "power": 1.8,
+   "durability": 80,
+   "made_from": {
+    "copper_metal": 1,
+    "wood": 1
+   },
+   "needs_concepts": [
+    "concept_metal_tool"
+   ]
+  },
+  {
+   "id": "bronze",
+   "name_ru": "Бронзовый инструмент",
+   "power": 2.5,
+   "durability": 140,
+   "made_from": {
+    "bronze": 1,
+    "wood": 1
+   },
+   "needs_concepts": [
+    "concept_metal_tool",
+    "concept_alloy"
+   ]
+  },
+  {
+   "id": "iron",
+   "name_ru": "Железный инструмент",
+   "power": 3.5,
+   "durability": 220,
+   "made_from": {
+    "iron_metal": 1,
+    "wood": 1
+   },
+   "needs_concepts": [
+    "concept_iron_working"
+   ]
+  },
+  {
+   "id": "star_steel",
+   "name_ru": "Звёздный инструмент",
+   "power": 5.0,
+   "durability": 600,
+   "made_from": {
+    "star_steel": 1,
+    "wood": 1
+   },
+   "needs_concepts": [
+    "concept_star_metal"
+   ],
+   "fantastic": true
+  }
+ ],
+ "tool_tier_order": [
+  "hands",
+  "stone",
+  "flint_tool",
+  "copper",
+  "bronze",
+  "iron",
+  "star_steel"
+ ],
+ "extraction_methods": [
+  {
+   "id": "gather",
+   "name_ru": "Собирать с земли",
+   "depth": [
+    0,
+    0
+   ],
+   "base_days_per_unit": 0.05,
+   "skill": "gathering",
+   "risk": null
+  },
+  {
+   "id": "harvest",
+   "name_ru": "Срезать растение",
+   "depth": [
+    0,
+    0
+   ],
+   "base_days_per_unit": 0.08,
+   "skill": "gathering",
+   "risk": null,
+   "keeps_source": true
+  },
+  {
+   "id": "dig",
+   "name_ru": "Копать яму",
+   "depth": [
+    0,
+    1
+   ],
+   "base_days_per_unit": 0.15,
+   "skill": "digging",
+   "risk": {
+    "type": "none"
+   }
+  },
+  {
+   "id": "pan",
+   "name_ru": "Промывать в реке",
+   "depth": [
+    0,
+    0
+   ],
+   "base_days_per_unit": 0.4,
+   "skill": "panning",
+   "requires_adjacent": "water",
+   "yield_mult": 0.5
+  },
+  {
+   "id": "quarry",
+   "name_ru": "Ломать камень",
+   "depth": [
+    0,
+    2
+   ],
+   "base_days_per_unit": 0.3,
+   "skill": "masonry",
+   "risk": {
+    "type": "injury",
+    "chance_per_unit": 0.005
+   }
+  },
+  {
+   "id": "mine",
+   "name_ru": "Шахта",
+   "depth": [
+    1,
+    4
+   ],
+   "base_days_per_unit": 0.5,
+   "skill": "mining",
+   "requires_structure": "mine_shaft",
+   "risk": {
+    "type": "collapse",
+    "chance_per_unit_by_depth": [
+     0,
+     0.002,
+     0.005,
+     0.01,
+     0.02
+    ],
+    "supports_reduce_by": 0.7
+   }
+  }
+ ],
+ "extraction_formula": {
+  "days_per_unit": "method.base_days_per_unit * resource.hardness * (1 + 0.6*depth) / (tool.power * (1 + skill/100))",
+  "allowed_if": "tool_tier_index(tool) >= tool_tier_index(resource.min_tool) and depth within method.depth",
+  "skill_gain_per_unit": 0.5,
+  "tool_wear_per_unit": "resource.hardness / 2"
+ },
+ "concepts": [
+  {
+   "id": "concept_fire",
+   "name_ru": "Огонь",
+   "known_at_start": true
+  },
+  {
+   "id": "concept_tool",
+   "name_ru": "Орудие",
+   "known_at_start": true
+  },
+  {
+   "id": "concept_knapping",
+   "name_ru": "Скалывание камня",
+   "unlock": {
+    "via": "use",
+    "resource": "flint",
+    "times": 5
+   }
+  },
+  {
+   "id": "concept_pottery",
+   "name_ru": "Гончарство",
+   "unlock": {
+    "via": "accident",
+    "context": "clay_near_fire",
+    "chance": 0.02
+   }
+  },
+  {
+   "id": "concept_charcoal",
+   "name_ru": "Выжигание угля",
+   "unlock": {
+    "via": "accident",
+    "context": "buried_fire",
+    "chance": 0.01
+   }
+  },
+  {
+   "id": "concept_smelting",
+   "name_ru": "Плавка",
+   "unlock": {
+    "via": "accident",
+    "context": "ore_in_hot_fire",
+    "chance": 0.015,
+    "requires": [
+     "concept_pottery"
+    ]
+   }
+  },
+  {
+   "id": "concept_metal_tool",
+   "name_ru": "Металлическое орудие",
+   "unlock": {
+    "via": "combine",
+    "requires": [
+     "concept_smelting",
+     "concept_tool"
+    ],
+    "chance": 0.05
+   }
+  },
+  {
+   "id": "concept_alloy",
+   "name_ru": "Сплав",
+   "unlock": {
+    "via": "experiment",
+    "requires": [
+     "concept_smelting"
+    ],
+    "needs_two_ores_known": true,
+    "chance": 0.01
+   }
+  },
+  {
+   "id": "concept_iron_working",
+   "name_ru": "Работа с железом",
+   "unlock": {
+    "via": "experiment",
+    "requires": [
+     "concept_alloy"
+    ],
+    "needs_fuel": "charcoal_or_coal",
+    "chance": 0.006
+   }
+  },
+  {
+   "id": "concept_night_watch",
+   "name_ru": "Ночные наблюдения",
+   "unlock": {
+    "via": "habit",
+    "context": "awake_at_night_days",
+    "times": 10
+   }
+  },
+  {
+   "id": "concept_moon_cycle",
+   "name_ru": "Лунный цикл",
+   "unlock": {
+    "via": "observe",
+    "context": "seen_full_moons",
+    "times": 6,
+    "requires": [
+     "concept_night_watch"
+    ]
+   }
+  },
+  {
+   "id": "concept_star_metal",
+   "name_ru": "Небесный металл",
+   "unlock": {
+    "via": "experiment",
+    "requires": [
+     "concept_iron_working"
+    ],
+    "needs_resource_held": "star_iron",
+    "chance": 0.05
+   },
+   "fantastic": true
+  },
+  {
+   "id": "concept_prospecting",
+   "name_ru": "Разведка недр",
+   "unlock": {
+    "via": "generalize",
+    "context": "confirmed_sign_links",
+    "times": 2
+   }
+  }
+ ],
+ "knowledge_model": {
+  "stores": "each resident: {sign_links: {sign_id->resource_id: confidence}, resources: {resource_id: state}, concepts: {concept_id: confidence}, places: [{x,y,resource_id,confidence}]}",
+  "resource_states": [
+   "unknown",
+   "noticed",
+   "hypothesis",
+   "confirmed",
+   "mastered"
+  ],
+  "thresholds": {
+   "hypothesis": 0.2,
+   "confirmed": 0.6,
+   "mastered": 0.9
+  },
+  "notice_chance_per_day": "resource.discovery.base_notice * (0.5 + race.perception[resource.category]) * (0.5 + trait.curiosity) * visibility_now(sign) * (1 - sign.notice_difficulty)",
+  "on_notice": "add sign_link(sign,resource) with confidence 0.15; remember place",
+  "on_test_dig_success": "+0.25 confidence (×1.5 if dig was chosen because of the sign)",
+  "on_test_dig_failure": "-0.10 confidence; false positives create superstitions when confidence stays 0.2..0.5 for 30+ days",
+  "decay_per_day": 0.001,
+  "teach": {
+   "per_day_together": 0.05,
+   "parent_to_child_at_age": 12,
+   "mentor_bonus": "skill/100"
+  },
+  "lost_if_no_holders": true,
+  "superstition": {
+   "created_from": "false sign_links",
+   "spread_like_knowledge": true,
+   "affects": "where residents choose to dig"
+  }
+ },
+ "prospecting_actions": [
+  {
+   "id": "observe_surroundings",
+   "name_ru": "Осматриваться",
+   "pre": [],
+   "effect": "roll notice for signs within 3 cells",
+   "cost_days": 0.1
+  },
+  {
+   "id": "night_watch",
+   "name_ru": "Наблюдать ночью",
+   "pre": [
+    "is_night",
+    "energy>40"
+   ],
+   "effect": "roll notice for night signs within 5 cells; counts toward concept_night_watch",
+   "cost_days": 0.3
+  },
+  {
+   "id": "follow_stream",
+   "name_ru": "Идти вверх по ручью",
+   "pre": [
+    "knows:placer_resource"
+   ],
+   "effect": "move upstream; roll notice for source vein signs",
+   "cost_days": 0.5
+  },
+  {
+   "id": "test_dig",
+   "name_ru": "Пробная яма",
+   "pre": [
+    "sign_link_confidence>=0.15"
+   ],
+   "effect": "reveal layers 0..1 of a cell; update confidence",
+   "cost_days": 0.4
+  },
+  {
+   "id": "deep_probe",
+   "name_ru": "Глубокий шурф",
+   "pre": [
+    "concept_prospecting",
+    "tool>=copper"
+   ],
+   "effect": "reveal layers 0..3 of a cell",
+   "cost_days": 1.5
+  },
+  {
+   "id": "ask_elder",
+   "name_ru": "Спросить старшего",
+   "pre": [
+    "near_resident_with_knowledge"
+   ],
+   "effect": "transfer one sign_link at 60% of teacher confidence",
+   "cost_days": 0.1
+  },
+  {
+   "id": "mark_place",
+   "name_ru": "Отметить место",
+   "pre": [
+    "confirmed_place"
+   ],
+   "effect": "place becomes visible to whole settlement and claimable",
+   "cost_days": 0.05
+  }
+ ],
+ "prospecting_goal_rule": "a resident adopts goal 'find(resource)' when settlement need(resource) > 0.5 and the resident has any sign_link to it, or trait.curiosity > 0.7 with free time",
+ "races": [
+  {
+   "id": "human",
+   "name_ru": "Люди",
+   "existing": true,
+   "body": {
+    "lifespan": [
+     60,
+     80
+    ],
+    "maturity_age": 16,
+    "fertility": 1.0,
+    "speed": 1.0,
+    "strength": 1.0
+   },
+   "home_biomes": [
+    "plains",
+    "river_bank",
+    "hills"
+   ],
+   "penalty_biomes": {
+    "swamp": 0.8,
+    "mountains": 0.85
+   },
+   "housing": "house",
+   "diet": [
+    "berries",
+    "grain",
+    "meat",
+    "fish"
+   ],
+   "perception": {
+    "material": 0.5,
+    "ore": 0.5,
+    "fuel": 0.5,
+    "precious": 0.6,
+    "arcane": 0.4,
+    "arcane_plant": 0.4
+   },
+   "trait_bias": {
+    "curiosity": 0.55,
+    "industry": 0.6,
+    "aggression": 0.45,
+    "generosity": 0.5,
+    "sociability": 0.6
+   },
+   "values": {
+    "wood": 1.0,
+    "stone": 0.8,
+    "copper": 1.0,
+    "iron": 1.2,
+    "gold": 1.5,
+    "salt": 1.2
+   },
+   "taboos": [],
+   "starting_knowledge": [
+    "concept_fire",
+    "concept_tool",
+    "stone"
+   ]
+  },
+  {
+   "id": "grond",
+   "name_ru": "Гронды",
+   "desc_ru": "Горный народ",
+   "body": {
+    "lifespan": [
+     180,
+     240
+    ],
+    "maturity_age": 40,
+    "fertility": 0.35,
+    "speed": 0.8,
+    "strength": 1.6
+   },
+   "home_biomes": [
+    "mountains",
+    "hills"
+   ],
+   "penalty_biomes": {
+    "forest": 0.75,
+    "swamp": 0.6,
+    "water": 0.0
+   },
+   "housing": "cave_hall",
+   "diet": [
+    "mushrooms",
+    "meat",
+    "berries"
+   ],
+   "perception": {
+    "material": 0.8,
+    "ore": 0.95,
+    "fuel": 0.7,
+    "precious": 0.8,
+    "arcane": 0.7,
+    "arcane_plant": 0.2
+   },
+   "skill_bonus": {
+    "mining": 1.5,
+    "masonry": 1.4,
+    "digging": 1.3
+   },
+   "trait_bias": {
+    "curiosity": 0.45,
+    "industry": 0.85,
+    "aggression": 0.5,
+    "generosity": 0.4,
+    "sociability": 0.35
+   },
+   "values": {
+    "stone": 1.0,
+    "copper": 1.4,
+    "iron": 1.6,
+    "gold": 1.8,
+    "aether_crystal": 2.5,
+    "wood": 1.3
+   },
+   "taboos": [
+    {
+     "action": "foreign_mining",
+     "where": "own_claims",
+     "offense": 0.8
+    }
+   ],
+   "sacred": [
+    "mountains"
+   ],
+   "starting_knowledge": [
+    "concept_fire",
+    "concept_tool",
+    "stone",
+    "flint"
+   ]
+  },
+  {
+   "id": "sylvan",
+   "name_ru": "Сильвы",
+   "desc_ru": "Лесной народ",
+   "body": {
+    "lifespan": [
+     120,
+     160
+    ],
+    "maturity_age": 25,
+    "fertility": 0.6,
+    "speed": 1.25,
+    "strength": 0.8
+   },
+   "home_biomes": [
+    "forest"
+   ],
+   "penalty_biomes": {
+    "mountains": 0.8,
+    "steppe": 0.8,
+    "volcanic": 0.5
+   },
+   "housing": "tree_lodge",
+   "diet": [
+    "berries",
+    "nuts",
+    "herbs"
+   ],
+   "perception": {
+    "material": 0.4,
+    "ore": 0.2,
+    "fuel": 0.3,
+    "precious": 0.3,
+    "arcane": 0.6,
+    "arcane_plant": 0.95
+   },
+   "skill_bonus": {
+    "gathering": 1.6,
+    "healing": 1.5,
+    "stealth": 1.5
+   },
+   "trait_bias": {
+    "curiosity": 0.6,
+    "industry": 0.45,
+    "aggression": 0.35,
+    "generosity": 0.6,
+    "sociability": 0.5
+   },
+   "values": {
+    "glowmoss": 2.0,
+    "dreamroot": 1.6,
+    "berries": 1.2,
+    "iron": 0.4,
+    "wood": 0.2
+   },
+   "taboos": [
+    {
+     "action": "cut_tree",
+     "where": "forest_within_10_of_lodge",
+     "offense": 1.0
+    },
+    {
+     "action": "burn_forest",
+     "where": "any",
+     "offense": 2.0
+    }
+   ],
+   "sacred": [
+    "forest"
+   ],
+   "starting_knowledge": [
+    "concept_fire",
+    "concept_tool",
+    "glowmoss"
+   ]
+  },
+  {
+   "id": "nayar",
+   "name_ru": "Наяры",
+   "desc_ru": "Речной народ",
+   "body": {
+    "lifespan": [
+     70,
+     90
+    ],
+    "maturity_age": 15,
+    "fertility": 0.9,
+    "speed": 0.9,
+    "strength": 0.9,
+    "swim": true
+   },
+   "home_biomes": [
+    "river_bank",
+    "lake_shore"
+   ],
+   "penalty_biomes": {
+    "steppe": 0.7,
+    "mountains": 0.7,
+    "volcanic": 0.6
+   },
+   "far_from_water_penalty": {
+    "distance": 8,
+    "mult": 0.75
+   },
+   "housing": "stilt_house",
+   "diet": [
+    "fish",
+    "reeds",
+    "berries"
+   ],
+   "perception": {
+    "material": 0.6,
+    "ore": 0.4,
+    "fuel": 0.4,
+    "precious": 0.85,
+    "arcane": 0.5,
+    "arcane_plant": 0.5
+   },
+   "skill_bonus": {
+    "panning": 1.6,
+    "pottery": 1.4,
+    "trade": 1.6,
+    "boats": 2.0
+   },
+   "trait_bias": {
+    "curiosity": 0.55,
+    "industry": 0.55,
+    "aggression": 0.35,
+    "generosity": 0.5,
+    "sociability": 0.75
+   },
+   "values": {
+    "clay": 1.0,
+    "gold": 1.6,
+    "salt": 1.4,
+    "moonsilver": 2.0,
+    "fish": 1.2
+   },
+   "taboos": [
+    {
+     "action": "poison_water",
+     "where": "any",
+     "offense": 2.0
+    }
+   ],
+   "controls": [
+    "fords",
+    "river_mouths"
+   ],
+   "starting_knowledge": [
+    "concept_fire",
+    "concept_tool",
+    "clay"
+   ]
+  },
+  {
+   "id": "khat",
+   "name_ru": "Кхаты",
+   "desc_ru": "Кочевники степей",
+   "body": {
+    "lifespan": [
+     55,
+     70
+    ],
+    "maturity_age": 14,
+    "fertility": 1.1,
+    "speed": 1.5,
+    "strength": 1.1,
+    "mounted": true
+   },
+   "home_biomes": [
+    "steppe",
+    "plains"
+   ],
+   "penalty_biomes": {
+    "forest": 0.7,
+    "swamp": 0.6,
+    "mountains": 0.7
+   },
+   "housing": "tent",
+   "nomadic": {
+    "move_camp_every_days": [
+     20,
+     40
+    ],
+    "herd": true,
+    "pasture_need_cells_per_person": 6
+   },
+   "diet": [
+    "milk",
+    "meat"
+   ],
+   "perception": {
+    "material": 0.5,
+    "ore": 0.4,
+    "fuel": 0.4,
+    "precious": 0.5,
+    "arcane": 0.6,
+    "arcane_plant": 0.3
+   },
+   "perception_special": {
+    "meteor_crater": 0.95
+   },
+   "skill_bonus": {
+    "riding": 2.0,
+    "scouting": 1.8,
+    "herding": 1.8
+   },
+   "trait_bias": {
+    "curiosity": 0.6,
+    "industry": 0.5,
+    "aggression": 0.6,
+    "generosity": 0.55,
+    "sociability": 0.6
+   },
+   "values": {
+    "salt": 1.5,
+    "star_iron": 2.2,
+    "songstone": 1.8,
+    "iron": 1.3,
+    "pasture": 1.5
+   },
+   "taboos": [
+    {
+     "action": "fence_pasture",
+     "where": "steppe",
+     "offense": 0.9
+    }
+   ],
+   "sacred": [
+    "meteor_crater"
+   ],
+   "starting_knowledge": [
+    "concept_fire",
+    "concept_tool",
+    "salt"
+   ]
+  },
+  {
+   "id": "mirkh",
+   "name_ru": "Мирхи",
+   "desc_ru": "Болотный народ",
+   "body": {
+    "lifespan": [
+     90,
+     120
+    ],
+    "maturity_age": 20,
+    "fertility": 0.7,
+    "speed": 0.8,
+    "strength": 1.0,
+    "disease_resist": 0.8
+   },
+   "home_biomes": [
+    "swamp"
+   ],
+   "penalty_biomes": {
+    "steppe": 0.75,
+    "mountains": 0.7,
+    "volcanic": 0.8
+   },
+   "housing": "reed_mound",
+   "diet": [
+    "roots",
+    "fish",
+    "frogs"
+   ],
+   "perception": {
+    "material": 0.4,
+    "ore": 0.5,
+    "fuel": 0.8,
+    "precious": 0.3,
+    "arcane": 0.7,
+    "arcane_plant": 0.9,
+    "mineral": 0.8
+   },
+   "skill_bonus": {
+    "healing": 1.4,
+    "poison": 2.0,
+    "digging": 1.2
+   },
+   "trait_bias": {
+    "curiosity": 0.5,
+    "industry": 0.5,
+    "aggression": 0.4,
+    "generosity": 0.3,
+    "sociability": 0.25
+   },
+   "values": {
+    "peat": 1.0,
+    "salt": 1.3,
+    "dreamroot": 2.2,
+    "sulfur": 1.4,
+    "iron": 1.0
+   },
+   "taboos": [
+    {
+     "action": "drain_swamp",
+     "where": "any",
+     "offense": 1.5
+    },
+    {
+     "action": "enter_without_invite",
+     "where": "own_territory",
+     "offense": 0.4
+    }
+   ],
+   "sacred": [
+    "swamp"
+   ],
+   "starting_knowledge": [
+    "concept_fire",
+    "concept_tool",
+    "peat"
+   ]
+  },
+  {
+   "id": "emberkin",
+   "name_ru": "Пеплорождённые",
+   "desc_ru": "Народ пепельных земель",
+   "fantastic_race": true,
+   "body": {
+    "lifespan": [
+     100,
+     140
+    ],
+    "maturity_age": 20,
+    "fertility": 0.55,
+    "speed": 1.0,
+    "strength": 1.3,
+    "heat_resist": 1.0,
+    "cold_penalty": 0.7
+   },
+   "home_biomes": [
+    "volcanic"
+   ],
+   "penalty_biomes": {
+    "swamp": 0.6,
+    "lake_shore": 0.7,
+    "forest": 0.85
+   },
+   "housing": "basalt_dome",
+   "diet": [
+    "roots",
+    "meat",
+    "berries"
+   ],
+   "perception": {
+    "material": 0.6,
+    "ore": 0.7,
+    "fuel": 0.6,
+    "precious": 0.5,
+    "arcane": 0.8,
+    "arcane_fuel": 0.95,
+    "mineral": 0.8
+   },
+   "skill_bonus": {
+    "smelting": 1.8,
+    "fire_craft": 1.8
+   },
+   "trait_bias": {
+    "curiosity": 0.6,
+    "industry": 0.7,
+    "aggression": 0.55,
+    "generosity": 0.45,
+    "sociability": 0.45
+   },
+   "values": {
+    "emberstone": 2.4,
+    "obsidian": 1.5,
+    "sulfur": 1.2,
+    "iron": 1.4,
+    "coal": 1.3
+   },
+   "taboos": [
+    {
+     "action": "quench_sacred_fire",
+     "where": "own_settlement",
+     "offense": 1.5
+    }
+   ],
+   "sacred": [
+    "volcanic"
+   ],
+   "starting_knowledge": [
+    "concept_fire",
+    "concept_tool",
+    "obsidian"
+   ]
+  }
+ ],
+ "races_note": "human is the existing race; the 5 new are grond, sylvan, nayar, khat, mirkh. emberkin is an optional 6th fantastic race; disable with races_enabled.",
+ "races_enabled": [
+  "human",
+  "grond",
+  "sylvan",
+  "nayar",
+  "khat",
+  "mirkh"
+ ],
+ "territory": {
+  "influence": "each settlement projects influence = population^0.5 * 3 cells, decaying linearly to 0",
+  "claim": "a marked place (prospecting mark_place) inside own influence becomes a claim",
+  "contested_cell": "cell with influence >0.3 from two different peoples, or a claim inside another people's influence"
+ },
+ "relations": {
+  "scale": [
+   -100,
+   100
+  ],
+  "start": {
+   "same_race": 40,
+   "other_race": 0
+  },
+  "events": {
+   "trade_completed": 4,
+   "gift": 6,
+   "help_in_famine": 15,
+   "shared_enemy": 10,
+   "taboo_broken": "-30 * taboo.offense",
+   "resource_taken_from_claim": -12,
+   "raid": -35,
+   "killed_member": -50,
+   "treaty_kept_year": 5,
+   "treaty_broken": -60
+  },
+  "memory_decay_per_year": 0.05,
+  "inherited_grudge_share": 0.5
+ },
+ "tension": {
+  "formula": "T = w_c*contest + w_s*scarcity + w_g*grievance + w_a*leader_aggression + w_t*taboo_pressure - w_trade*trade_value - w_r*relation_positive",
+  "weights": {
+   "w_c": 30,
+   "w_s": 25,
+   "w_g": 0.4,
+   "w_a": 20,
+   "w_t": 15,
+   "w_trade": 0.5,
+   "w_r": 0.3
+  },
+  "terms": {
+   "contest": "share of a people's valued claims that are contested, 0..1",
+   "scarcity": "1 - stock/need for the contested resource, clamped 0..1",
+   "grievance": "max(0, -relation)",
+   "leader_aggression": "trait.aggression of leader (or council average)",
+   "taboo_pressure": "recent offenses against this people's taboos, 0..1",
+   "trade_value": "value of trade with that people over last year, in value units",
+   "relation_positive": "max(0, relation)"
+  },
+  "evaluated_every_days": 10
+ },
+ "escalation_ladder": [
+  {
+   "stage": 0,
+   "id": "avoid",
+   "name_ru": "Избегание",
+   "enter_T": 0,
+   "actions": [
+    "keep_distance"
+   ]
+  },
+  {
+   "stage": 1,
+   "id": "negotiate",
+   "name_ru": "Переговоры и торговля",
+   "enter_T": 10,
+   "actions": [
+    "offer_trade",
+    "propose_border",
+    "gift"
+   ]
+  },
+  {
+   "stage": 2,
+   "id": "demand",
+   "name_ru": "Требования",
+   "enter_T": 35,
+   "actions": [
+    "demand_leave_claim",
+    "demand_tribute",
+    "close_ford"
+   ]
+  },
+  {
+   "stage": 3,
+   "id": "skirmish",
+   "name_ru": "Стычки и набеги",
+   "enter_T": 55,
+   "actions": [
+    "raid_depot",
+    "drive_off_miners",
+    "sabotage"
+   ]
+  },
+  {
+   "stage": 4,
+   "id": "war",
+   "name_ru": "Война",
+   "enter_T": 75,
+   "actions": [
+    "attack_settlement",
+    "seize_claim",
+    "burn_store"
+   ]
+  },
+  {
+   "stage": 5,
+   "id": "peace",
+   "name_ru": "Мир и договор",
+   "enter_rule": "war_weariness > 0.6 or T < 40 during war",
+   "actions": [
+    "sign_treaty",
+    "set_border",
+    "exchange_tribute"
+   ]
+  }
+ ],
+ "de_escalation": {
+  "hysteresis": 10,
+  "war_weariness_per_casualty": 0.03,
+  "war_weariness_per_famine_day": 0.01
+ },
+ "decision_maker": "leader or council of each settlement decides; individuals only act inside the stage chosen",
+ "combat": {
+  "unit_strength": "strength * (1 + skill_fight/100) * weapon.power * terrain_mult * morale",
+  "weapon_from_tool": true,
+  "terrain_mult": {
+   "grond": {
+    "mountains": 1.4,
+    "hills": 1.2
+   },
+   "sylvan": {
+    "forest": 1.5
+   },
+   "nayar": {
+    "river_bank": 1.3,
+    "lake_shore": 1.3
+   },
+   "khat": {
+    "steppe": 1.5,
+    "plains": 1.3
+   },
+   "mirkh": {
+    "swamp": 1.6
+   },
+   "emberkin": {
+    "volcanic": 1.5
+   },
+   "human": {
+    "plains": 1.1
+   }
+  },
+  "resolution": "each round: casualties_side = enemy_strength / (own_strength + enemy_strength) * 0.15 * own_count",
+  "retreat_when_morale_below": 0.3,
+  "consequences": [
+   "casualties",
+   "burned_stock",
+   "captured_claim",
+   "refugees",
+   "famine_risk",
+   "legend_created"
+  ]
+ },
+ "trade": {
+  "value_of_resource_for_race": "races[].values[resource] (default 1.0) * scarcity_multiplier",
+  "trade_happens_when": "both sides value received goods > value given * 1.1",
+  "carriers": "nayar get 2x carry capacity by boat on rivers; khat 1.5x on steppe",
+  "routes": "repeated trips become paths (see paths.footfall)"
+ },
+ "paths": {
+  "footfall_per_step": 1,
+  "decay_per_day": 0.02,
+  "levels": [
+   {
+    "id": "trail",
+    "min_footfall": 50,
+    "move_mult": 1.15
+   },
+   {
+    "id": "road",
+    "min_footfall": 300,
+    "move_mult": 1.35
+   }
+  ]
+ },
+ "world_events": [
+  {
+   "id": "meteor_fall",
+   "chance_per_year": 0.02,
+   "effect": "create meteor_crater overlay at random land cell"
+  },
+  {
+   "id": "drought",
+   "chance_per_year": 0.08,
+   "effect": "berries regrow x0.4 for 60 days; white_crust signs more visible"
+  },
+  {
+   "id": "flood",
+   "chance_per_year": 0.06,
+   "effect": "river_bank cells flood for 10 days; new placer deposits may appear downstream"
+  },
+  {
+   "id": "earthquake",
+   "chance_per_year": 0.01,
+   "effect": "collapse open mines; may expose a deposit layer to depth 0"
+  },
+  {
+   "id": "ley_surge",
+   "chance_per_year": 0.03,
+   "fantastic": true,
+   "effect": "night_glow visible in daytime near ley_line for 5 days"
+  }
+ ],
+ "goods": [
+  {
+   "id": "berries",
+   "name_ru": "Ягоды"
+  },
+  {
+   "id": "grain",
+   "name_ru": "Зерно"
+  },
+  {
+   "id": "meat",
+   "name_ru": "Мясо"
+  },
+  {
+   "id": "fish",
+   "name_ru": "Рыба"
+  },
+  {
+   "id": "milk",
+   "name_ru": "Молоко"
+  },
+  {
+   "id": "nuts",
+   "name_ru": "Орехи"
+  },
+  {
+   "id": "herbs",
+   "name_ru": "Травы"
+  },
+  {
+   "id": "mushrooms",
+   "name_ru": "Грибы"
+  },
+  {
+   "id": "roots",
+   "name_ru": "Корни"
+  },
+  {
+   "id": "reeds",
+   "name_ru": "Тростник"
+  },
+  {
+   "id": "frogs",
+   "name_ru": "Лягушки"
+  },
+  {
+   "id": "pasture",
+   "name_ru": "Пастбище (земля)"
+  }
+ ]
+}
