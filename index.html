@@ -21,6 +21,7 @@ footer{padding-top:16px;color:#96aba0;font-size:12px}label{display:block;font-si
 <main><canvas id="world"></canvas><div class="overlay">🟢 Автономная симуляция · нажми на жителя или дом</div></main>
 <aside><h2>👤 Выбранный объект</h2><div class="selected" id="selected">Выбери жителя или дом на карте.</div><h3>📜 События мира</h3><div id="events"></div></aside></div>
 <script src="renderer.js"></script>
+<script src="planner.js"></script>
 <script>
 'use strict';
 const canvas=document.getElementById('world'),ctx=canvas.getContext('2d'),S=52,W=48,H=36;
@@ -110,6 +111,29 @@ function remember(a,message){
  if(a.memory.length&&a.memory[0].endsWith(': '+message)){a.memory[0]=entry;return}
  a.memory.unshift(entry);a.memory.length=Math.min(a.memory.length,6);
 }
+// A homeless adult plans (GOAP) how to get a home: chop -> deliver -> buildHome. Only one resident builds at a time.
+function needsHome(a){return a.health>0&&a.age>=16&&!a.home&&homes.length<40&&homes.length<Math.ceil(agents.filter(p=>p.health>0).length/2)}
+function planHousing(a){
+ if(typeof AetherraPlanner==='undefined'||!needsHome(a)){a.plan=undefined;a.site=undefined;return}
+ // Residents may build in parallel, but never more homes than the stock and the housing cap allow.
+ const others=agents.filter(o=>o!==a&&o.health>0&&!o.home&&o.planGoal==='hasHome').length;
+ if(a.planGoal!=='hasHome'&&(others>=Math.floor(stock.wood/12)&&others>0||homes.length+others>=Math.ceil(agents.filter(p=>p.health>0).length/2)))return;
+ const steps=AetherraPlanner.plan({woodInHand:a.carrying>0,woodStocked:stock.wood>=12,hasHome:false},{hasHome:true});
+ if(steps&&steps.length){a.plan=steps;a.planGoal='hasHome'}else{a.plan=undefined;a.planGoal=undefined}
+}
+// Executes the buildHome step: walk to a site and build. Returns true when it used this resident's turn.
+function buildHomeStep(a){
+ if(stock.wood<12){a.plan=undefined;a.planGoal=undefined;a.site=undefined;return false}
+ if(!a.site||!free(a.site.x,a.site.y))a.site=chooseSite();
+ if(!a.site)return false;
+ a.state='Идёт строить дом';move(a,a.site.x+.5,a.site.y+.5);
+ if(Math.hypot(a.x-a.site.x-.5,a.y-a.site.y-.5)<.9){
+  stock.wood-=12;
+  const h={id:uid++,x:a.site.x,y:a.site.y,level:1,owner:a.name};a.home=h.id;homes.push(h);
+  a.plan=undefined;a.planGoal=undefined;a.site=undefined;a.path=undefined;log(h.owner+' построил дом');
+ }
+ return true;
+}
 function chooseWork(a){
  const foodPerPerson=stock.food/Math.max(1,agents.filter(p=>p.health>0).length);
  const foodScore=foodPerPerson<3?120:foodPerPerson<6?85:15;
@@ -173,7 +197,9 @@ for(const a of agents){
  }
  if(day>=a.nextDecision){
   a.decision=chooseWork(a);a.nextDecision=day+1.3+rand()*.4;
+  planHousing(a);
  }
+ if(a.plan&&a.plan[0]==='buildHome'&&buildHomeStep(a))continue;
  if(a.decision==='food'){
   const b=targetBerries(a);
   if(b){
@@ -196,7 +222,6 @@ for(const a of agents){
   }
  }else{a.state='Отдыхает';a.energy=Math.min(100,a.energy+.08)}
 }
-if(stock.wood>=12&&homes.length<40&&homes.length<Math.ceil(agents.filter(a=>a.health>0).length/2)&&agents.some(a=>a.health>0&&a.age>=16)){const site=chooseSite();if(site){stock.wood-=12;const owner=agents.find(a=>a.health>0&&a.age>=16&&!a.home)||agents.find(a=>a.health>0&&a.age>=16);const h={id:uid++,x:site.x,y:site.y,level:1,owner:owner.name};owner.home=h.id;homes.push(h);log(h.owner+' построил дом')} }
 // Births require housing and a sufficient food surplus; children consume food but do not work.
 const birthCycle=Math.floor(day/12);
 if(birthCycle>lastBirthCycle){
@@ -252,7 +277,7 @@ function validateSnapshot(data){
  if(!Number.isFinite(data.day)||data.day<0||!Number.isInteger(data.rng)||data.rng<0||data.rng>4294967295||!Number.isInteger(data.uid)||data.uid<0||!Number.isFinite(data.seed))throw Error('Некорректное время или генератор');
  const pos=p=>p&&Number.isInteger(p.x)&&Number.isInteger(p.y)&&inside(p.x,p.y);
  if(!pos(data.depot)||data.reachable[idx(data.depot.x,data.depot.y)]!==1)throw Error('Некорректный склад');
- if(!data.agents.every(a=>Number.isInteger(a.id)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&inside(Math.floor(a.x),Math.floor(a.y))&&Number.isFinite(a.hunger)&&a.hunger>=0&&a.hunger<=100&&Number.isFinite(a.health)&&a.health>=0&&a.health<=100&&Number.isFinite(a.energy)&&a.energy>=0&&a.energy<=100&&Number.isFinite(a.carrying)&&a.carrying>=0&&a.experience&&Number.isFinite(a.experience.food)&&Number.isFinite(a.experience.wood)&&Array.isArray(a.memory)&&a.memory.length<=6&&a.memory.every(m=>typeof m==='string'&&m.length<=200)&&typeof a.name==='string'&&a.name.length>=1&&a.name.length<=60&&(a.state===undefined||typeof a.state==='string'&&a.state.length<=80)))throw Error('Повреждены данные жителей');
+ if(!data.agents.every(a=>Number.isInteger(a.id)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&inside(Math.floor(a.x),Math.floor(a.y))&&Number.isFinite(a.hunger)&&a.hunger>=0&&a.hunger<=100&&Number.isFinite(a.health)&&a.health>=0&&a.health<=100&&Number.isFinite(a.energy)&&a.energy>=0&&a.energy<=100&&Number.isFinite(a.carrying)&&a.carrying>=0&&a.experience&&Number.isFinite(a.experience.food)&&Number.isFinite(a.experience.wood)&&Array.isArray(a.memory)&&a.memory.length<=6&&a.memory.every(m=>typeof m==='string'&&m.length<=200)&&(a.plan===undefined||a.plan===null||Array.isArray(a.plan)&&a.plan.length<=6&&a.plan.every(x=>['chop','deliver','buildHome'].includes(x)))&&(a.site==null||pos(a.site))&&typeof a.name==='string'&&a.name.length>=1&&a.name.length<=60&&(a.state===undefined||typeof a.state==='string'&&a.state.length<=80)))throw Error('Повреждены данные жителей');
  if(!data.homes.every(h=>pos(h)&&Number.isInteger(h.id)&&(h.owner===undefined||typeof h.owner==='string'&&h.owner.length<=60))||!data.trees.every(t=>pos(t)&&Number.isFinite(t.wood)&&t.wood>=0)||!data.berries.every(b=>pos(b)&&Number.isFinite(b.food)&&b.food>=0))throw Error('Повреждены здания или природные ресурсы');
  if(!Array.isArray(data.events)||data.events.length>8||!data.events.every(e=>typeof e==='string'&&e.length<500))throw Error('Повреждена история мира');
 }
