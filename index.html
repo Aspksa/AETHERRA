@@ -69,7 +69,7 @@ const spawnCells=grass.filter(i=>Math.hypot(i%W-depot.x,Math.floor(i/W)-depot.y)
 const safeSpawn=spawnCells.length?spawnCells:grass;
 const names=['Артём','Мира','Лев','Алиса','Тим','Ника','Ян','Рада','Олег','Ева','Макс','Лада','Илья','Зоя','Роман','Вера','Марк','Ася','Данил','Соня'];
 for(let i=0;i<20;i++){const cell=safeSpawn[Math.floor(rand()*safeSpawn.length)],x=cell%W,y=Math.floor(cell/W);
-agents.push({id:uid++,name:names[i],x:x+.5,y:y+.5,age:18+Math.floor(rand()*35),state:'Исследует',target:null,carrying:0,energy:80+rand()*20,home:null,hunger:12+rand()*20,health:100,decision:'wood',nextDecision:0,foraging:null,experience:{wood:0,food:0},memory:[]})}
+agents.push({id:uid++,name:names[i],x:x+.5,y:y+.5,age:18+Math.floor(rand()*35),state:'Исследует',target:null,carrying:0,energy:80+rand()*20,home:null,hunger:12+rand()*20,health:100,decision:'wood',nextDecision:0,foraging:null,experience:{wood:0,food:0},memory:[],traits:randomTraits()})}
 log('Первые 20 жителей появились на планете');updatePanel()}
 function free(x,y){return inside(x,y)&&reachable[idx(x,y)]===1&&tiles[idx(x,y)]==='grass'&&!(x===depot.x&&y===depot.y)&&!trees.some(t=>t.wood>0&&t.x===x&&t.y===y)&&!homes.some(h=>Math.abs(h.x-x)<2&&Math.abs(h.y-y)<2)}
 function passable(x,y){return inside(x,y)&&tiles[idx(x,y)]!=='water'}
@@ -134,10 +134,17 @@ function buildHomeStep(a){
  }
  return true;
 }
+// Character: five inheritable traits in 0..1. Industry and generosity bias work choice; the rest are recorded for later steps.
+const TRAITS=['industry','sociability','courage','generosity','curiosity'];
+const TRAIT_LABELS={industry:'трудолюбие',sociability:'общительность',courage:'смелость',generosity:'щедрость',curiosity:'любопытство'};
+const trait=(a,k)=>a.traits&&Number.isFinite(a.traits[k])?a.traits[k]:.5;
+const clamp01=v=>Math.max(0,Math.min(1,v));
+function randomTraits(){const t={};for(const k of TRAITS)t[k]=Math.round(rand()*100)/100;return t}
+function inheritTraits(p,q){const t={};for(const k of TRAITS)t[k]=Math.round(clamp01((trait(p,k)+trait(q||p,k))/2+(rand()-.5)*.24)*100)/100;return t}
 function chooseWork(a){
  const foodPerPerson=stock.food/Math.max(1,agents.filter(p=>p.health>0).length);
- const foodScore=foodPerPerson<3?120:foodPerPerson<6?85:15;
- const woodScore=(stock.wood<12?70:stock.wood<36?45:20)+(a.id%3===0?30:0);
+ const foodScore=(foodPerPerson<3?120:foodPerPerson<6?85:15)+(trait(a,'generosity')-.5)*30;
+ const woodScore=(stock.wood<12?70:stock.wood<36?45:20)+(a.id%3===0?30:0)+(trait(a,'industry')-.5)*30;
  return foodScore>woodScore?'food':'wood';
 }
 function targetBerries(a){
@@ -231,10 +238,10 @@ if(birthCycle>lastBirthCycle){
  if(deceased.length>20){const drop=new Set(deceased.slice(0,deceased.length-20).map(a=>a.id));agents=agents.filter(a=>!drop.has(a.id));if(selected&&selected.type==='agent'&&drop.has(selected.id))selected=null}
  const living=agents.filter(a=>a.health>0),adults=living.filter(a=>a.age>=18);
  if(day>=12&&living.length<80&&living.length<homes.length*3&&adults.length>=2&&stock.food>=living.length*3+6){
-  const parent=adults[Math.floor(rand()*adults.length)];
+  const parent=adults[Math.floor(rand()*adults.length)],partners=adults.filter(x=>x!==parent),partner=partners[Math.floor(rand()*partners.length)];
   stock.food-=6;
   const id=uid++;
-  agents.push({id,name:'Житель-'+id,x:parent.x,y:parent.y,age:0,state:'Растёт',target:null,carrying:0,energy:90,home:parent.home,hunger:15,health:100,decision:'food',nextDecision:day+1,foraging:null,experience:{wood:0,food:0},memory:['Родился в поселении'],resting:false});
+  agents.push({id,name:'Житель-'+id,x:parent.x,y:parent.y,age:0,state:'Растёт',target:null,carrying:0,energy:90,home:parent.home,hunger:15,health:100,decision:'food',nextDecision:day+1,foraging:null,experience:{wood:0,food:0},memory:['Родился в поселении'],resting:false,traits:inheritTraits(parent,partner)});
   log('В семье '+parent.name+' родился ребёнок');
  }
 }
@@ -277,7 +284,7 @@ function validateSnapshot(data){
  if(!Number.isFinite(data.day)||data.day<0||!Number.isInteger(data.rng)||data.rng<0||data.rng>4294967295||!Number.isInteger(data.uid)||data.uid<0||!Number.isFinite(data.seed))throw Error('Некорректное время или генератор');
  const pos=p=>p&&Number.isInteger(p.x)&&Number.isInteger(p.y)&&inside(p.x,p.y);
  if(!pos(data.depot)||data.reachable[idx(data.depot.x,data.depot.y)]!==1)throw Error('Некорректный склад');
- if(!data.agents.every(a=>Number.isInteger(a.id)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&inside(Math.floor(a.x),Math.floor(a.y))&&Number.isFinite(a.hunger)&&a.hunger>=0&&a.hunger<=100&&Number.isFinite(a.health)&&a.health>=0&&a.health<=100&&Number.isFinite(a.energy)&&a.energy>=0&&a.energy<=100&&Number.isFinite(a.carrying)&&a.carrying>=0&&a.experience&&Number.isFinite(a.experience.food)&&Number.isFinite(a.experience.wood)&&Array.isArray(a.memory)&&a.memory.length<=6&&a.memory.every(m=>typeof m==='string'&&m.length<=200)&&(a.plan===undefined||a.plan===null||Array.isArray(a.plan)&&a.plan.length<=6&&a.plan.every(x=>['chop','deliver','buildHome'].includes(x)))&&(a.site==null||pos(a.site))&&typeof a.name==='string'&&a.name.length>=1&&a.name.length<=60&&(a.state===undefined||typeof a.state==='string'&&a.state.length<=80)))throw Error('Повреждены данные жителей');
+ if(!data.agents.every(a=>Number.isInteger(a.id)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&inside(Math.floor(a.x),Math.floor(a.y))&&Number.isFinite(a.hunger)&&a.hunger>=0&&a.hunger<=100&&Number.isFinite(a.health)&&a.health>=0&&a.health<=100&&Number.isFinite(a.energy)&&a.energy>=0&&a.energy<=100&&Number.isFinite(a.carrying)&&a.carrying>=0&&a.experience&&Number.isFinite(a.experience.food)&&Number.isFinite(a.experience.wood)&&Array.isArray(a.memory)&&a.memory.length<=6&&a.memory.every(m=>typeof m==='string'&&m.length<=200)&&(a.traits===undefined||a.traits&&TRAITS.every(k=>Number.isFinite(a.traits[k])&&a.traits[k]>=0&&a.traits[k]<=1))&&(a.plan===undefined||a.plan===null||Array.isArray(a.plan)&&a.plan.length<=6&&a.plan.every(x=>['chop','deliver','buildHome'].includes(x)))&&(a.site==null||pos(a.site))&&typeof a.name==='string'&&a.name.length>=1&&a.name.length<=60&&(a.state===undefined||typeof a.state==='string'&&a.state.length<=80)))throw Error('Повреждены данные жителей');
  if(!data.homes.every(h=>pos(h)&&Number.isInteger(h.id)&&(h.owner===undefined||typeof h.owner==='string'&&h.owner.length<=60))||!data.trees.every(t=>pos(t)&&Number.isFinite(t.wood)&&t.wood>=0)||!data.berries.every(b=>pos(b)&&Number.isFinite(b.food)&&b.food>=0))throw Error('Повреждены здания или природные ресурсы');
  if(!Array.isArray(data.events)||data.events.length>8||!data.events.every(e=>typeof e==='string'&&e.length<500))throw Error('Повреждена история мира');
 }
@@ -288,7 +295,7 @@ function restoreWorld(data){
  berries=data.berries.map(b=>({...b}));events=[...data.events];depot={...data.depot};
  reachable=Uint8Array.from(data.reachable);
  agents=data.agents.map(a=>{
-  const copy={...a,memory:[...a.memory],experience:{...a.experience},path:a.path?a.path.map(p=>({...p})):undefined,goal:a.goal??undefined};
+  const copy={...a,traits:Object.fromEntries(TRAITS.map(k=>[k,trait(a,k)])),memory:[...a.memory],experience:{...a.experience},path:a.path?a.path.map(p=>({...p})):undefined,goal:a.goal??undefined};
   copy.tree=copy.treePos?trees.find(t=>t.x===copy.treePos.x&&t.y===copy.treePos.y)||null:null;
   copy.foraging=copy.foragePos?berries.find(b=>b.x===copy.foragePos.x&&b.y===copy.foragePos.y)||null:null;
   delete copy.treePos;delete copy.foragePos;
@@ -317,7 +324,7 @@ function loadWorld(){
 }
 function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Дети',agents.filter(a=>a.health>0&&a.age<16).length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
 if(selected){let o=selected.type==='agent'?agents.find(a=>a.id===selected.id):homes.find(h=>h.id===selected.id);
-document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+escapeHtml(o.name)+'</b><br>Возраст: '+Math.floor(o.age)+'<br>Действие: '+escapeHtml(o.state)+'<br>Энергия: '+Math.round(o.energy)+'%<br>Голод: '+Math.round(o.hunger)+'%<br>Здоровье: '+Math.round(o.health)+'%<br>Навык добычи: '+o.experience.wood+'<br>Сбор пищи: '+o.experience.food+'<br>Память: '+escapeHtml(o.memory.slice(0,3).join('; '))+'<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+escapeHtml(o.owner)+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
+document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+escapeHtml(o.name)+'</b><br>Возраст: '+Math.floor(o.age)+'<br>Действие: '+escapeHtml(o.state)+'<br>Энергия: '+Math.round(o.energy)+'%<br>Голод: '+Math.round(o.hunger)+'%<br>Здоровье: '+Math.round(o.health)+'%<br>Навык добычи: '+o.experience.wood+'<br>Сбор пищи: '+o.experience.food+'<br>Характер: '+TRAITS.map(k=>TRAIT_LABELS[k]+' '+Math.round(trait(o,k)*100)+'%').join(', ')+'<br>Память: '+escapeHtml(o.memory.slice(0,3).join('; '))+'<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+escapeHtml(o.owner)+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
 function centerCamera(){const w=canvas.clientWidth||900,h=canvas.clientHeight||540;scale=Math.max(.45,Math.min(1,Math.min(w/(26*S),h/(18*S))));ox=w/2-(depot.x+.5)*S*scale;oy=h/2-(depot.y+.5)*S*scale}
 function size(){const r=canvas.getBoundingClientRect(),d=window.devicePixelRatio||1;canvas.width=Math.round(r.width*d);canvas.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0)}
 function draw(){
