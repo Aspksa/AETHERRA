@@ -10,3 +10,4 @@ __pycache__/
 AETHERRA_SERVER.log
 .aetherra_managed_files.json
 python/
+.env
