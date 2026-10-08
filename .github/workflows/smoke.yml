@@ -62,3 +62,4 @@ jobs:
           node --check renderer.js
           node tests/map-renderer.mjs
           node tests/depot-survival.mjs
+          node tests/save-portability.mjs
