@@ -20,22 +20,53 @@ rem Only select an interpreter here. Start the server exactly once.
 if exist "%ROOT%python\python.exe" (
   set "PYTHON=%ROOT%python\python.exe"
   call :validate
+  if not errorlevel 1 goto run
+)
+if exist "%ROOT%.venv\Scripts\python.exe" (
+  set "PYTHON=%ROOT%.venv\Scripts\python.exe"
+  call :validate
+  if not errorlevel 1 goto run
+)
+where python >nul 2>nul
+if not errorlevel 1 (
+  set "PYTHON=python"
+  call :validate
+  if not errorlevel 1 goto run
+)
+where python3 >nul 2>nul
+if not errorlevel 1 (
+  set "PYTHON=python3"
+  call :validate
+  if not errorlevel 1 goto run
+)
+where py >nul 2>nul
+if not errorlevel 1 (
+  set "PYTHON=py"
+  call :validate
+  if not errorlevel 1 goto run
+)
+echo ERROR: No functioning Python interpreter was found.
+>> "%LOG%" echo ERROR: No working interpreter
+goto failure
+
+
+:validate
 >> "%LOG%" echo Checking Python candidate: %PYTHON%
 set "PROBE=%TEMP%\aetherra-python-probe-%RANDOM%-%RANDOM%.txt"
 if "%PYTHON%"=="py" (
-  py -3 -c "import sys;print('AETHERRA_PYTHON_OK')" > "%PROBE%" 2>> "%LOG%"
+  py -3 -c "print('AETHERRA_PYTHON_OK')" > "%PROBE%" 2>> "%LOG%"
 ) else (
-  "%PYTHON%" -c "import sys;print('AETHERRA_PYTHON_OK')" > "%PROBE%" 2>> "%LOG%"
+  "%PYTHON%" -c "print('AETHERRA_PYTHON_OK')" > "%PROBE%" 2>> "%LOG%"
 )
-rem Windows may return a NEGATIVE HRESULT for a stale launcher; don't trust IF ERRORLEVEL.
-set "PROBE_OK=1"
-if exist "%PROBE%" (
-  findstr /x /c:"AETHERRA_PYTHON_OK" "%PROBE%" >nul 2>nul
-  if not errorlevel 1 set "PROBE_OK=0"
-  del /q "%PROBE%" >nul 2>nul
-)
-if "%PROBE_OK%"=="0" exit /b 0
->> "%LOG%" echo Candidate rejected: interpreter did not print readiness token.
+rem Check the actual output, not negative HRESULT errorlevel from a broken Windows launcher.
+if not exist "%PROBE%" goto rejected_python
+findstr /x /c:"AETHERRA_PYTHON_OK" "%PROBE%" >nul 2>nul
+if errorlevel 1 goto rejected_python
+del /q "%PROBE%" >nul 2>nul
+exit /b 0
+:rejected_python
+if exist "%PROBE%" del /q "%PROBE%" >nul 2>nul
+>> "%LOG%" echo Candidate rejected: no readiness token.
 exit /b 1
 
 :run
