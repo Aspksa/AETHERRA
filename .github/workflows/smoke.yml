@@ -1,0 +1,28 @@
+name: AETHERRA Smoke
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+jobs:
+  python-server:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Verify Windows launcher exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path AETHERRA.bat)) { throw "Launcher missing" }
+  browser-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Extract and check inline JavaScript
+        run: node tests/check-inline-js.mjs
