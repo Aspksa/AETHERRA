@@ -14,6 +14,8 @@ import tempfile
 import time
 from urllib.request import Request, urlopen
 import zipfile
+from urllib.error import HTTPError, URLError
+from xml.etree import ElementTree
 
 BASE = Path(__file__).resolve().parent
 REPO = "Aspksa/AETHERRA"
@@ -46,11 +48,39 @@ def local_sha():
     return path.read_text(encoding="ascii").strip() if path.exists() else None
 
 
+def latest_commit():
+    """Use GitHub API first, public Atom feed when API is blocked/rate-limited."""
+    try:
+        data = json.loads(request_bytes(API, 1024 * 1024).decode("utf-8"))
+        return data["sha"], data.get("commit", {}).get("message", "").strip()
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError, KeyError) as api_error:
+        try:
+            feed = request_bytes(f"https://github.com/{REPO}/commits/main.atom", 1024 * 1024)
+            root = ElementTree.fromstring(feed)
+            ns = {"a": "http://www.w3.org/2005/Atom"}
+            entry = root.find("a:entry", ns)
+            if entry is None:
+                raise ValueError("empty commit feed")
+            link = entry.find("a:link", ns)
+            href = link.get("href", "") if link is not None else ""
+            sha = href.rstrip("/").rsplit("/", 1)[-1]
+            if len(sha) != 40 or any(c not in "0123456789abcdef" for c in sha.lower()):
+                raise ValueError("invalid commit ID in feed")
+            title = entry.findtext("a:title", default="", namespaces=ns).strip()
+            return sha, title
+        except Exception:
+            if isinstance(api_error, HTTPError):
+                if api_error.code in (403, 429):
+                    raise RuntimeError("GitHub ограничил запросы или доступ (HTTP %s). Повторите позже или проверьте сеть." % api_error.code) from None
+                raise RuntimeError("GitHub вернул HTTP %s" % api_error.code) from None
+            if isinstance(api_error, (URLError, TimeoutError, OSError)):
+                raise RuntimeError("Не удаётся подключиться к GitHub. Проверьте интернет, DNS, прокси или антивирус.") from None
+            raise RuntimeError("GitHub вернул неожиданные данные") from None
+
+
 def check():
-    commit = json.loads(request_bytes(API, 1024 * 1024).decode("utf-8"))
-    sha = commit["sha"]
+    sha, message = latest_commit()
     installed = local_sha()
-    message = commit.get("commit", {}).get("message", "").strip()
     return {"installed": installed, "latest": sha,
             "update_available": installed != sha,
             "current_version": installed[:12] if installed else "не определена",
