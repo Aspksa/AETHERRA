@@ -31,20 +31,63 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const river=Math.abs(y-(17+4*Math.sin(x
 if(kind==='grass'&&rand()<.34&&!(x>13&&x<30&&y>7&&y<28))trees.push({x,y,wood:3+Math.floor(rand()*4)})}
 const names=['Артём','Мира','Лев','Алиса','Тим','Ника','Ян','Рада','Олег','Ева','Макс','Лада','Илья','Зоя','Роман','Вера','Марк','Ася','Данил','Соня'];
 for(let i=0;i<20;i++){let x,y,attempt=0;do{x=18+Math.floor(rand()*10);y=9+Math.floor(rand()*16);attempt++}while(tiles[idx(x,y)]!=='grass'&&attempt<100);
+if(!passable(x,y)){const safe=tiles.findIndex(k=>k==='grass');if(safe<0)throw Error('No habitable terrain');x=safe%W;y=Math.floor(safe/W)}
 agents.push({id:uid++,name:names[i],x:x+.5,y:y+.5,age:18+Math.floor(rand()*35),state:'Исследует',target:null,carrying:0,energy:80+rand()*20,home:null})}
 log('Первые 20 жителей появились на планете');updatePanel()}
 function free(x,y){return inside(x,y)&&tiles[idx(x,y)]==='grass'&&!homes.some(h=>Math.abs(h.x-x)<2&&Math.abs(h.y-y)<2)}
-function targetTree(a){let best=null,dist=Infinity;for(const t of trees){if(t.wood<=0)continue;const d=Math.abs(a.x-t.x-.5)+Math.abs(a.y-t.y-.5);if(d<dist){dist=d;best=t}}return best}
+function passable(x,y){return inside(x,y)&&tiles[idx(x,y)]!=='water'}
+function findPath(sx,sy,tx,ty){
+ if(!passable(sx,sy)||!passable(tx,ty))return null;
+ const start=idx(sx,sy),goal=idx(tx,ty),prev=new Int32Array(W*H).fill(-1),queue=[start];prev[start]=start;
+ for(let head=0;head<queue.length;head++){
+  const at=queue[head];if(at===goal)break;
+  const x=at%W,y=Math.floor(at/W);
+  for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+   const nx=x+dx,ny=y+dy;if(!passable(nx,ny))continue;
+   const next=idx(nx,ny);if(prev[next]!==-1)continue;prev[next]=at;queue.push(next);
+  }
+ }
+ if(prev[goal]===-1)return null;
+ const path=[];for(let at=goal;at!==start;at=prev[at])path.push({x:at%W+.5,y:Math.floor(at/W)+.5});
+ return path.reverse();
+}
+function targetTree(a){
+ if(a.tree&&a.tree.wood>0)return a.tree;
+ a.tree=null;
+ const sx=Math.floor(a.x),sy=Math.floor(a.y);if(!passable(sx,sy))return null;
+ const prev=new Uint8Array(W*H),queue=[idx(sx,sy)];prev[queue[0]]=1;
+ const live=new Map(trees.filter(t=>t.wood>0).map(t=>[idx(t.x,t.y),t]));
+ for(let head=0;head<queue.length;head++){
+  const at=queue[head];if(live.has(at)){a.tree=live.get(at);return a.tree}
+  const x=at%W,y=Math.floor(at/W);
+  for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+   const nx=x+dx,ny=y+dy;if(!passable(nx,ny))continue;
+   const next=idx(nx,ny);if(!prev[next]){prev[next]=1;queue.push(next)}
+  }
+ }
+ return null;
+}
 function chooseSite(){let best=null,score=-Infinity;for(let i=0;i<60;i++){let x=12+Math.floor(rand()*23),y=6+Math.floor(rand()*25);if(!free(x,y))continue;const near=homes.length?Math.min(...homes.map(h=>Math.hypot(h.x-x,h.y-y))):Math.hypot(x-23,y-18);const s=-Math.abs(near-3)+rand()*3;if(s>score){score=s;best={x,y}}}return best}
 function step(){day+=.065;
 for(const a of agents){a.energy=Math.max(0,a.energy-.015);if(a.energy<22){a.state='Отдыхает';a.energy=Math.min(100,a.energy+.18);continue}
 if(a.carrying){a.state='Доставляет древесину';move(a,22.5,17.5);if(Math.hypot(a.x-22.5,a.y-17.5)<1.1){stock.wood+=a.carrying;a.carrying=0}continue}
-const t=targetTree(a);if(t){a.state='Добывает древесину';move(a,t.x+.5,t.y+.5);if(Math.hypot(a.x-t.x-.5,a.y-t.y-.5)<.7){t.wood--;a.carrying++;if(t.wood===0)log(a.name+' срубил дерево')} }else{a.state='Отдыхает';a.energy=Math.min(100,a.energy+.07)}}
+const t=targetTree(a);if(t){a.state='Добывает древесину';move(a,t.x+.5,t.y+.5);if(Math.hypot(a.x-t.x-.5,a.y-t.y-.5)<.7){t.wood--;a.carrying++;if(t.wood===0){a.tree=null;log(a.name+' срубил дерево')}} }else{a.state='Отдыхает';a.energy=Math.min(100,a.energy+.07)}}
 if(stock.wood>=12&&homes.length<10){const site=chooseSite();if(site){stock.wood-=12;const h={id:uid++,x:site.x,y:site.y,level:1,owner:agents[homes.length%agents.length].name};homes.push(h);log(h.owner+' построил дом')} }
 if(day>2&&Math.floor(day)%5===0&&stock.food>0&&Math.floor(day*10)%10===0)stock.food--;
 if(trees.filter(t=>t.wood>0).length<25&&rand()<.03){const x=Math.floor(rand()*W),y=Math.floor(rand()*H);if(tiles[idx(x,y)]==='grass'&&!homes.some(h=>Math.hypot(h.x-x,h.y-y)<2))trees.push({x,y,wood:4})}
 }
-function move(a,x,y){const dx=x-a.x,dy=y-a.y,len=Math.hypot(dx,dy);if(len<.08)return;const vx=dx/len*.048,vy=dy/len*.048,nx=a.x+vx,ny=a.y+vy;if(inside(Math.floor(nx),Math.floor(ny))&&tiles[idx(Math.floor(nx),Math.floor(ny))]!=='water'){a.x=nx;a.y=ny}else{a.x+=vx*.16;a.y+=vy*.16}}
+function move(a,x,y){
+ const tx=Math.floor(x),ty=Math.floor(y),sx=Math.floor(a.x),sy=Math.floor(a.y);
+ if(!passable(sx,sy)||!passable(tx,ty))return;
+ if(!a.path||a.goal!==idx(tx,ty)||!a.path.length){
+  a.path=findPath(sx,sy,tx,ty);a.goal=idx(tx,ty);
+ }
+ if(!a.path||!a.path.length)return;
+ const point=a.path[0],dx=point.x-a.x,dy=point.y-a.y,len=Math.hypot(dx,dy);
+ if(len<.06){a.x=point.x;a.y=point.y;a.path.shift();return}
+ const step=Math.min(.048,len),nx=a.x+dx/len*step,ny=a.y+dy/len*step;
+ if(passable(Math.floor(nx),Math.floor(ny))){a.x=nx;a.y=ny}else{a.path=null}
+}
 function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.length],['Дома',homes.length],['Древесина',stock.wood],['Пища',stock.food],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
 if(selected){let o=selected.type==='agent'?agents.find(a=>a.id===selected.id):homes.find(h=>h.id===selected.id);
 document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+o.name+'</b><br>Возраст: '+o.age+'<br>Действие: '+o.state+'<br>Энергия: '+Math.round(o.energy)+'%<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+o.owner+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
