@@ -74,7 +74,7 @@ function drawAgent(ctx,a){
  }
 }
 function render(ctx,w){
- const {tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy}=w;
+ const {trail,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy}=w;
  const width=w.canvas.clientWidth,height=w.canvas.clientHeight;
  ctx.clearRect(0,0,width,height);
  ctx.save();ctx.translate(ox,oy);ctx.scale(scale,scale);
@@ -106,6 +106,17 @@ function render(ctx,w){
    const wave=(day*.12+h*7)%1;
    ctx.strokeStyle='#c6eddf88';ctx.lineWidth=1.6;ctx.beginPath();
    ctx.moveTo(px+6+wave*11,py+14+h*10);ctx.lineTo(px+21+wave*11,py+14+h*10);ctx.stroke();
+  }
+ }
+ // Trails: worn ground between places residents visit often; stronger wear reads as a road.
+ if(trail){
+  for(let y=top;y<bottom;y++)for(let x=left;x<right;x++){
+   const wear=trail[y*W+x]||0;
+   if(wear<50||tiles[y*W+x]==='water')continue;
+   const px=x*S,py=y*S,h=hash(x,y,seed+5),t=Math.min(1,(wear-50)/150);
+   ctx.fillStyle='rgba(158,124,80,'+(.16+t*.5).toFixed(2)+')';
+   ctx.beginPath();ctx.ellipse(px+S*.5,py+S*.5,S*(.46+t*.1),S*(.4+t*.1),0,0,Math.PI*2);ctx.fill();
+   if(wear>120){ctx.fillStyle='rgba(120,92,58,'+(.2+t*.3).toFixed(2)+')';ctx.fillRect(px+S*.18+h*S*.2,py+S*.3+h*S*.3,5,3)}
   }
  }
  // Everything standing on the map is drawn in one pass sorted by depth (y), so nearer objects overlap farther ones.
