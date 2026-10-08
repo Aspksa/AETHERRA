@@ -25,10 +25,12 @@ footer{padding-top:16px;color:#96aba0;font-size:12px}label{display:block;font-si
 const canvas=document.getElementById('world'),ctx=canvas.getContext('2d'),S=52,W=48,H=36;
 let seed=42,rng,tiles,agents,homes,trees,berries,events,day,stock,paused=false,speed=1,scale=1,ox=0,oy=0,selected=null,uid=0,drag=null,depot={x:22,y:17},reachable=new Uint8Array(W*H);
 function rand(){rng=(Math.imul(rng,1664525)+1013904223)>>>0;return rng/4294967296}
+// Names, events and memories may come from an imported save file: never inject them as HTML.
+function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function noise(x,y){return (Math.sin(x*.22+seed*.017)+Math.cos(y*.25-seed*.031)+Math.sin((x+y)*.15+seed*.09))/3}
 let lastBirthCycle=0;
 const idx=(x,y)=>y*W+x, inside=(x,y)=>x>=0&&x<W&&y>=0&&y<H;
-function log(msg){events.unshift('День '+Math.floor(day)+': '+msg);events.length=Math.min(events.length,8);document.getElementById('events').innerHTML=events.map(e=>'<div class="event">'+e+'</div>').join('')}
+function log(msg){events.unshift('День '+Math.floor(day)+': '+msg);events.length=Math.min(events.length,8);document.getElementById('events').innerHTML=events.map(e=>'<div class="event">'+escapeHtml(e)+'</div>').join('')}
 function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];berries=[];events=[];day=0;lastBirthCycle=0;stock={wood:0,food:100};selected=null;scale=.74;ox=100;oy=25;
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const river=Math.abs(y-(17+4*Math.sin(x*.17+seed*.03)))<1.35;const n=noise(x,y)+rand()*.19;const water=river||n<-.66;const kind=water?'water':n>.63?'stone':n<-.32?'sand':'grass';tiles.push(kind);
 if(kind==='grass'&&rand()<.34&&!(x>13&&x<30&&y>7&&y<28))trees.push({x,y,wood:3+Math.floor(rand()*4)})}
@@ -102,7 +104,10 @@ function targetTree(a){
 }
 function chooseSite(){let best=null,score=-Infinity;for(let i=0;i<140;i++){let x=Math.floor(rand()*W),y=Math.floor(rand()*H);if(!free(x,y))continue;const near=homes.length?Math.min(...homes.map(h=>Math.hypot(h.x-x,h.y-y))):Math.hypot(x-depot.x,y-depot.y);const s=-Math.abs(near-3)+rand()*3;if(s>score){score=s;best={x,y}}}return best}
 function remember(a,message){
- a.memory.unshift('День '+Math.floor(day)+': '+message);a.memory.length=Math.min(a.memory.length,6);
+ const entry='День '+Math.floor(day)+': '+message;
+ // Routine events (eating) refresh the latest entry instead of flooding the memory.
+ if(a.memory.length&&a.memory[0].endsWith(': '+message)){a.memory[0]=entry;return}
+ a.memory.unshift(entry);a.memory.length=Math.min(a.memory.length,6);
 }
 function chooseWork(a){
  const foodPerPerson=stock.food/Math.max(1,agents.filter(p=>p.health>0).length);
@@ -195,6 +200,9 @@ if(stock.wood>=12&&homes.length<40&&homes.length<Math.ceil(agents.filter(a=>a.he
 const birthCycle=Math.floor(day/12);
 if(birthCycle>lastBirthCycle){
  lastBirthCycle=birthCycle;
+ // Keep only the 20 most recent deceased; older ones would grow the save without limit.
+ const deceased=agents.filter(a=>a.health<=0);
+ if(deceased.length>20){const drop=new Set(deceased.slice(0,deceased.length-20).map(a=>a.id));agents=agents.filter(a=>!drop.has(a.id));if(selected&&selected.type==='agent'&&drop.has(selected.id))selected=null}
  const living=agents.filter(a=>a.health>0),adults=living.filter(a=>a.age>=18);
  if(day>=12&&living.length<80&&living.length<homes.length*3&&adults.length>=2&&stock.food>=living.length*3+6){
   const parent=adults[Math.floor(rand()*adults.length)];
@@ -243,8 +251,8 @@ function validateSnapshot(data){
  if(!Number.isFinite(data.day)||data.day<0||!Number.isInteger(data.rng)||data.rng<0||data.rng>4294967295||!Number.isInteger(data.uid)||data.uid<0||!Number.isFinite(data.seed))throw Error('Некорректное время или генератор');
  const pos=p=>p&&Number.isInteger(p.x)&&Number.isInteger(p.y)&&inside(p.x,p.y);
  if(!pos(data.depot)||data.reachable[idx(data.depot.x,data.depot.y)]!==1)throw Error('Некорректный склад');
- if(!data.agents.every(a=>Number.isInteger(a.id)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&inside(Math.floor(a.x),Math.floor(a.y))&&Number.isFinite(a.hunger)&&a.hunger>=0&&a.hunger<=100&&Number.isFinite(a.health)&&a.health>=0&&a.health<=100&&Number.isFinite(a.energy)&&a.energy>=0&&a.energy<=100&&Number.isFinite(a.carrying)&&a.carrying>=0&&a.experience&&Number.isFinite(a.experience.food)&&Number.isFinite(a.experience.wood)&&Array.isArray(a.memory)&&a.memory.length<=6))throw Error('Повреждены данные жителей');
- if(!data.homes.every(h=>pos(h)&&Number.isInteger(h.id))||!data.trees.every(t=>pos(t)&&Number.isFinite(t.wood)&&t.wood>=0)||!data.berries.every(b=>pos(b)&&Number.isFinite(b.food)&&b.food>=0))throw Error('Повреждены здания или природные ресурсы');
+ if(!data.agents.every(a=>Number.isInteger(a.id)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&inside(Math.floor(a.x),Math.floor(a.y))&&Number.isFinite(a.hunger)&&a.hunger>=0&&a.hunger<=100&&Number.isFinite(a.health)&&a.health>=0&&a.health<=100&&Number.isFinite(a.energy)&&a.energy>=0&&a.energy<=100&&Number.isFinite(a.carrying)&&a.carrying>=0&&a.experience&&Number.isFinite(a.experience.food)&&Number.isFinite(a.experience.wood)&&Array.isArray(a.memory)&&a.memory.length<=6&&a.memory.every(m=>typeof m==='string'&&m.length<=200)&&typeof a.name==='string'&&a.name.length>=1&&a.name.length<=60&&(a.state===undefined||typeof a.state==='string'&&a.state.length<=80)))throw Error('Повреждены данные жителей');
+ if(!data.homes.every(h=>pos(h)&&Number.isInteger(h.id)&&(h.owner===undefined||typeof h.owner==='string'&&h.owner.length<=60))||!data.trees.every(t=>pos(t)&&Number.isFinite(t.wood)&&t.wood>=0)||!data.berries.every(b=>pos(b)&&Number.isFinite(b.food)&&b.food>=0))throw Error('Повреждены здания или природные ресурсы');
  if(!Array.isArray(data.events)||data.events.length>8||!data.events.every(e=>typeof e==='string'&&e.length<500))throw Error('Повреждена история мира');
 }
 function restoreWorld(data){
@@ -261,7 +269,7 @@ function restoreWorld(data){
   return copy;
  });
  selected=null;document.getElementById('seed').value=String(seed);
- document.getElementById('events').innerHTML=events.map(e=>'<div class="event">'+e+'</div>').join('');
+ document.getElementById('events').innerHTML=events.map(e=>'<div class="event">'+escapeHtml(e)+'</div>').join('');
  updatePanel();
 }
 function saveWorld(){
@@ -283,7 +291,7 @@ function loadWorld(){
 }
 function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Дети',agents.filter(a=>a.health>0&&a.age<16).length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
 if(selected){let o=selected.type==='agent'?agents.find(a=>a.id===selected.id):homes.find(h=>h.id===selected.id);
-document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+o.name+'</b><br>Возраст: '+Math.floor(o.age)+'<br>Действие: '+o.state+'<br>Энергия: '+Math.round(o.energy)+'%<br>Голод: '+Math.round(o.hunger)+'%<br>Здоровье: '+Math.round(o.health)+'%<br>Навык добычи: '+o.experience.wood+'<br>Сбор пищи: '+o.experience.food+'<br>Память: '+o.memory.slice(0,3).join('; ')+'<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+o.owner+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
+document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+escapeHtml(o.name)+'</b><br>Возраст: '+Math.floor(o.age)+'<br>Действие: '+escapeHtml(o.state)+'<br>Энергия: '+Math.round(o.energy)+'%<br>Голод: '+Math.round(o.hunger)+'%<br>Здоровье: '+Math.round(o.health)+'%<br>Навык добычи: '+o.experience.wood+'<br>Сбор пищи: '+o.experience.food+'<br>Память: '+escapeHtml(o.memory.slice(0,3).join('; '))+'<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+escapeHtml(o.owner)+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
 function size(){const r=canvas.getBoundingClientRect(),d=window.devicePixelRatio||1;canvas.width=Math.round(r.width*d);canvas.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0)}
 function draw(){
  AetherraRenderer.render(ctx,{canvas,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy});
