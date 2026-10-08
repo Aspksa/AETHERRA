@@ -46,14 +46,14 @@ exit /b 1
 if errorlevel 1 exit /b 1
 echo Starting local server with %1
 %1 "%ROOT%server.py" >> "%LOG%" 2>&1
-exit /b 1
+exit /b 0
 
 :try_launcher
 >> "%LOG%" echo Attempt: Python Launcher
 py -3 -c "import sys; assert sys.version_info.major == 3" >> "%LOG%" 2>&1
 if errorlevel 1 exit /b 1
 py -3 "%ROOT%server.py" >> "%LOG%" 2>&1
-exit /b 1
+exit /b 0
 
 :missing
 echo Missing server.py or index.html. Extract the full archive.
