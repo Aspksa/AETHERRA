@@ -31,6 +31,7 @@ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const river=Math.abs(y-(17+4*Math.sin(x
 if(kind==='grass'&&rand()<.34&&!(x>13&&x<30&&y>7&&y<28))trees.push({x,y,wood:3+Math.floor(rand()*4)})}
 const names=['Артём','Мира','Лев','Алиса','Тим','Ника','Ян','Рада','Олег','Ева','Макс','Лада','Илья','Зоя','Роман','Вера','Марк','Ася','Данил','Соня'];
 for(let i=0;i<20;i++){let x,y,attempt=0;do{x=18+Math.floor(rand()*10);y=9+Math.floor(rand()*16);attempt++}while(tiles[idx(x,y)]!=='grass'&&attempt<100);
+if(!passable(x,y)){const safe=tiles.findIndex(k=>k==='grass');if(safe<0)throw Error('No habitable terrain');x=safe%W;y=Math.floor(safe/W)}
 agents.push({id:uid++,name:names[i],x:x+.5,y:y+.5,age:18+Math.floor(rand()*35),state:'Исследует',target:null,carrying:0,energy:80+rand()*20,home:null})}
 log('Первые 20 жителей появились на планете');updatePanel()}
 function free(x,y){return inside(x,y)&&tiles[idx(x,y)]==='grass'&&!homes.some(h=>Math.abs(h.x-x)<2&&Math.abs(h.y-y)<2)}
