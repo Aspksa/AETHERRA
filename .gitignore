@@ -1,0 +1,9 @@
+# Local state and diagnostics
+.aetherra_version
+.aetherra_backup/
+AETHERRA_STARTUP.log
+AETHERRA_UPDATE.log
+AETHERRA_DIAGNOSTICS.txt
+__pycache__/
+*.pyc
+.venv/
