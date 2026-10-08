@@ -103,7 +103,10 @@ def main():
     try:
         if mode == "install-restart":
             time.sleep(2)
-            print(install())
+            try:
+                print(install())
+            except Exception as exc:
+                print("Update failed; restoring current launcher:", exc, file=sys.stderr)
             if sys.platform == "win32":
                 subprocess.Popen(["cmd", "/c", str(BASE / "AETHERRA.bat")], cwd=str(BASE), creationflags=subprocess.CREATE_NEW_CONSOLE)
             else:
