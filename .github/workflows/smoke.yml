@@ -59,3 +59,5 @@ jobs:
           node tests/world-economy.mjs
           node tests/survival-utility.mjs
           node tests/world-saves.mjs
+          node --check renderer.js
+          node tests/map-renderer.mjs
