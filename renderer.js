@@ -84,7 +84,7 @@ function render(ctx,w){
   ellipse(ctx,px,py-16,5.5,2.7,['#4d3b32','#775b40','#332d36','#b49d63'][a.id%4]);
   if(a.hunger>75){ellipse(ctx,px+9,py-24,7,6,'#d9b87f');ctx.fillStyle='#613a30';ctx.font='bold 9px sans-serif';ctx.fillText('!',px+7,py-21)}
  }
- if(selected){const a=selected.type==='agent'?agents.find(x=>x.id===selected.id):homes.find(x=>x.id===selected.id);if(a){ctx.strokeStyle='#ffe4a0';ctx.lineWidth=2.5;ctx.strokeRect(a.x*S-10,a.y*S-23,65,65)}}
+ if(selected){const a=selected.type==='agent'?agents.find(x=>x.id===selected.id&&x.health>0):homes.find(x=>x.id===selected.id);if(a){ctx.strokeStyle='#ffe4a0';ctx.lineWidth=2.5;if(selected.type==='home')ctx.strokeRect(a.x*S+2,a.y*S-8,52,59);else ctx.strokeRect(a.x*S-12,a.y*S-25,24,39)}}
  ctx.restore();
 }
 global.AetherraRenderer={render,hash};
