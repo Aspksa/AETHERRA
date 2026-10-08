@@ -49,3 +49,4 @@ jobs:
           node tests/water-path.mjs
           node tests/server-mode.mjs
           node tests/world-economy.mjs
+          node tests/survival-utility.mjs
