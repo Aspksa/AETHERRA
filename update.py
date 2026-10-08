@@ -22,7 +22,8 @@ REPO = "Aspksa/AETHERRA"
 API = f"https://api.github.com/repos/{REPO}/commits/main"
 ARCHIVE = f"https://github.com/{REPO}/archive/refs/heads/main.zip"
 FILES = ("index.html", "server.py", "AETHERRA.bat", "README.md",
-         "update.py", "UPDATE_AETHERRA.bat", "cloudru.py")
+         "update.py", "UPDATE_AETHERRA.bat", "cloudru.py",
+         "diagnose.py", "DIAGNOSE_AETHERRA.bat", "PLAY_OFFLINE.bat")
 MAX_ZIP = 20 * 1024 * 1024
 
 
@@ -91,7 +92,7 @@ def check():
 
 
 def install():
-    sha = remote_sha()
+    sha, _ = latest_commit()
     if sha == local_sha():
         return "Already up to date"
     # Pin archive to verified GitHub commit rather than downloading changing main.
@@ -102,7 +103,7 @@ def install():
                    if len(Path(name).parts) == 2 and not name.endswith("/")}
         if any(f not in members for f in FILES):
             raise ValueError("Incomplete update archive")
-        with tempfile.TemporaryDirectory(prefix="aetherra-update-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="aetherra-update-", dir=BASE) as tmp:
             temp = Path(tmp)
             for filename in FILES:
                 payload = z.read(members[filename])
