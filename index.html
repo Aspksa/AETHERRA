@@ -150,7 +150,7 @@ async function worldUpdateCheck(){
   return;
  }
  try{
-  const response=await fetch('/api/update/check',{cache:'no-store'});
+  const response=await fetch('/api/update/check',{cache:'no-store',signal:AbortSignal.timeout(35000)});
   const data=await response.json();
   if(!response.ok)throw Error(data.error||'GitHub недоступен');
   worldUpdateInfo=data;
@@ -160,7 +160,7 @@ async function worldUpdateCheck(){
   if(data.source&&data.source.startsWith('https://github.com/Aspksa/AETHERRA/'))document.getElementById('worldUpdateLink').href=data.source;
   worldUpdateState.textContent=data.update_available?'Доступна новая версия для установки.':'Установлена актуальная версия.';
   worldUpdateInstall.disabled=!data.update_available;
- }catch(error){worldUpdateState.textContent='Не удалось проверить обновление: '+error.message}
+ }catch(error){worldUpdateState.textContent='Не удалось проверить обновление: '+(error.name==='TimeoutError'?'Превышено время ожидания GitHub (35 секунд). Проверьте подключение к интернету.':error.message)}
 }
 document.getElementById('worldUpdateCheck').onclick=worldUpdateCheck;
 worldUpdateInstall.onclick=async()=>{
