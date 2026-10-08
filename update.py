@@ -27,6 +27,7 @@ FILES = ("index.html", "server.py", "AETHERRA.bat", "README.md",
          "update.py", "UPDATE_AETHERRA.bat", "cloudru.py",
          "diagnose.py", "DIAGNOSE_AETHERRA.bat", "PLAY_OFFLINE.bat", "AETHERRA_START.ps1")
 MAX_ZIP = 20 * 1024 * 1024
+MANAGED = ".aetherra_managed_files.json"
 
 
 def request_bytes(url, maximum=MAX_ZIP):
@@ -137,6 +138,29 @@ def runtime_files(archive):
     return files
 
 
+def obsolete_files(new_members):
+    """Delete only files recorded by an earlier successful AETHERRA install."""
+    manifest = BASE / MANAGED
+    if not manifest.is_file():
+        return []
+    try:
+        items = json.loads(manifest.read_text(encoding="utf-8"))
+        if not isinstance(items, list):
+            return []
+    except (OSError, ValueError):
+        return []
+    def allowed(name):
+        if not isinstance(name, str) or len(name) > 240:
+            return False
+        path = Path(name)
+        parts = path.parts
+        if path.is_absolute() or not parts or any(p in ("", ".", "..") or p.startswith(".") for p in parts):
+            return False
+        if len(parts) == 1:
+            return name == "README.md" or path.suffix.lower() in {".py",".bat",".html",".js",".css",".ps1"}
+        return parts[0] in ("lib", "assets") and path.suffix.lower() in {".py",".bat",".html",".js",".css",".ps1",".png",".jpg",".jpeg",".webp",".gif",".json",".svg",".woff2",".wasm"}
+    return sorted(set(name for name in items if allowed(name) and name not in new_members and name not in FILES))
+
 def rollback():
     manifest = BASE / ".aetherra_backup" / "manifest.json"
     if not manifest.exists():
@@ -150,6 +174,12 @@ def rollback():
             shutil.copy2(saved, current)
         elif current.exists():
             current.unlink()
+    if "managed_previous" in data:
+        managed = BASE / MANAGED
+        if data["managed_previous"] is None:
+            managed.unlink(missing_ok=True)
+        else:
+            managed.write_text(data["managed_previous"], encoding="utf-8")
     old_sha = data.get("installed")
     version_file = BASE / ".aetherra_version"
     if old_sha:
@@ -169,6 +199,8 @@ def install():
     data = request_bytes(archive_url)
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         members = runtime_files(z)
+        obsolete = obsolete_files(members)
+        changed = list(members) + obsolete
         with tempfile.TemporaryDirectory(prefix="aetherra-update-", dir=BASE) as tmp:
             temp = Path(tmp)
             for filename, member in members.items():
@@ -186,18 +218,22 @@ def install():
             backup.mkdir(exist_ok=True)
             existing = []
             previous_sha = local_sha()
-            for name in members:
+            previous_managed = (BASE / MANAGED).read_text(encoding="utf-8") if (BASE / MANAGED).exists() else None
+            for name in changed:
                 if (BASE / name).exists():
                     (backup / name).parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(BASE / name, backup / name)
                     existing.append(name)
             (backup / "manifest.json").write_text(
-                json.dumps({"files": list(members), "existing": existing,
-                            "installed": previous_sha}), encoding="utf-8")
+                json.dumps({"files": changed, "existing": existing,
+                            "installed": previous_sha, "managed_previous": previous_managed}), encoding="utf-8")
             try:
                 for name in members:
                     (BASE / name).parent.mkdir(parents=True, exist_ok=True)
                     os.replace(temp / name, BASE / name)
+                for name in obsolete:
+                    (BASE / name).unlink(missing_ok=True)
+                (BASE / MANAGED).write_text(json.dumps(sorted(members)), encoding="utf-8")
                 (BASE / ".aetherra_version").write_text(sha, encoding="ascii")
             except Exception:
                 rollback()
