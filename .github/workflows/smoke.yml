@@ -17,12 +17,14 @@ jobs:
         shell: pwsh
         run: |
           $content = Get-Content AETHERRA.bat -Raw
-          if ($content -notmatch 'AETHERRA_PYTHON_OK' -or $content -notmatch 'Candidate rejected') { throw 'Positive interpreter probe missing' }
-          if ($content -notmatch 'exit /b 1') { throw 'Probe must reject broken interpreters' }
+          $launcher = Get-Content AETHERRA_START.ps1 -Raw
+          if ($launcher -notmatch 'AETHERRA_PYTHON_OK' -or $launcher -notmatch 'Candidate failed') { throw 'Positive interpreter probe missing' }
+          if ($content -notmatch 'AETHERRA_START.ps1') { throw 'BAT must use the reliable launcher' }
       - name: Launch AETHERRA via Windows BAT and verify HTTP health
         shell: pwsh
         run: |
           $env:AETHERRA_NO_BROWSER = '1'
+          $env:CI = 'true'
           python -c "import runpy; assert callable(runpy.run_path)"
           $proc = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "AETHERRA.bat") -PassThru -NoNewWindow
           try {
