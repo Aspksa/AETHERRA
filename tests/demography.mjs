@@ -5,7 +5,7 @@ const html=readFileSync('index.html','utf8');
 const source=html.slice(html.indexOf('function rand(){'),html.indexOf('function updatePanel('));
 for(const seedValue of [42,999]){
  const ctx={Math,Uint8Array,Int32Array,Map,document:{getElementById:id=>id==='seed'?{value:String(seedValue)}:{innerHTML:''}},updatePanel:()=>{}};
-vm.createContext(ctx);vm.runInContext(readFileSync("planner.js","utf8"),ctx);
+vm.createContext(ctx);vm.runInContext(readFileSync("planner.js","utf8"),ctx);vm.runInContext(readFileSync('building.js','utf8'),ctx);
  vm.runInContext(`const W=48,H=36,S=52;let seed,rng,tiles,agents,homes,trees,berries,events,day,stock,selected,scale,ox,oy,uid,reachable,depot;${source}`,ctx);
  const run=s=>vm.runInContext(s,ctx);
  run('createWorld();stock.food=2000;stock.wood=300');

@@ -62,6 +62,7 @@ jobs:
           node tests/save-safety.mjs
           node --check renderer.js
           node --check planner.js
+          node --check building.js
           node tests/map-renderer.mjs
           node tests/depot-survival.mjs
           node tests/save-portability.mjs
@@ -72,3 +73,4 @@ jobs:
           node tests/society.mjs
           node tests/trails.mjs
           node tests/daynight.mjs
+          node tests/inventions.mjs

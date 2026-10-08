@@ -5,7 +5,8 @@
 const ACTIONS=[
  {name:'chop',pre:{woodInHand:false},eff:{woodInHand:true}},
  {name:'deliver',pre:{woodInHand:true},eff:{woodInHand:false,woodStocked:true}},
- {name:'buildHome',pre:{woodStocked:true},eff:{woodStocked:false,hasHome:true}}
+ {name:'buildHome',pre:{woodStocked:true},eff:{woodStocked:false,hasHome:true}},
+ {name:'buildStructure',pre:{woodStocked:true},eff:{woodStocked:false,hasStructure:true}}
 ];
 const key=s=>Object.keys(s).sort().map(k=>k+'='+s[k]).join('|');
 const holds=(state,cond)=>Object.keys(cond).every(k=>state[k]===cond[k]);

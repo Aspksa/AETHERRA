@@ -6,7 +6,7 @@ assert.match(html,/<script src="planner.js"><\/script>/);
 const core=html.slice(html.indexOf('function rand(){'),html.indexOf('function updatePanel('));
 const ctx={Math,Uint8Array,Int32Array,Map,Set,document:{getElementById:id=>id==='seed'?{value:'42'}:{innerHTML:'',textContent:''}},updatePanel:()=>{}};
 vm.createContext(ctx);
-vm.runInContext(readFileSync('planner.js','utf8'),ctx);
+vm.runInContext(readFileSync('planner.js','utf8'),ctx);vm.runInContext(readFileSync('building.js','utf8'),ctx);
 vm.runInContext(`const W=48,H=36,S=52;let seed,rng,tiles,agents,homes,trees,berries,events,day,stock,selected,scale,ox,oy,uid,reachable,depot;${core}`,ctx);
 const run=s=>vm.runInContext(s,ctx);
 // 1. The planner chains actions on its own from facts and effects.
