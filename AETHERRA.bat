@@ -3,6 +3,7 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 set "ROOT=%~dp0"
 set "LOG=%ROOT%AETHERRA_STARTUP.log"
+set "AETHERRA_LOG=%LOG%"
 > "%LOG%" echo === AETHERRA startup ===
 if not exist "%ROOT%server.py" goto missing
 if not exist "%ROOT%index.html" goto missing
@@ -50,6 +51,7 @@ goto failure
 
 :validate
 >> "%LOG%" echo Checking Python candidate: %PYTHON%
+if not "%PYTHON%"=="py" "%PYTHON%" -c "import sys, os; print('Interpreter:',sys.executable); print('Server exists:',os.path.isfile('server.py'))" >> "%LOG%" 2>&1
 if "%PYTHON%"=="py" (
   py -3 -c "import sys; assert sys.version_info.major == 3" >> "%LOG%" 2>&1
 ) else (
@@ -61,14 +63,16 @@ exit /b %errorlevel%
 echo Starting AETHERRA at http://127.0.0.1:8765/
 >> "%LOG%" echo Starting server with %PYTHON%
 if "%PYTHON%"=="py" (
-  py -3 "%ROOT%server.py" >> "%LOG%" 2>&1
+  py -3 -u -c "import runpy;runpy.run_path('server.py',run_name='__main__')" >> "%LOG%" 2>&1
 ) else (
-  "%PYTHON%" "%ROOT%server.py" >> "%LOG%" 2>&1
+  "%PYTHON%" -u -c "import runpy;runpy.run_path('server.py',run_name='__main__')" >> "%LOG%" 2>&1
 )
 set "STATUS=%errorlevel%"
 if "%STATUS%"=="0" exit /b 0
 echo ERROR: Server exited with code %STATUS%.
 >> "%LOG%" echo ERROR: Server exited with code %STATUS%
+echo === Last startup log lines ===
+powershell -NoProfile -Command "Get-Content -LiteralPath $env:AETHERRA_LOG -Tail 24" 2>nul
 goto failure
 
 :health
