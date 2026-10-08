@@ -49,7 +49,7 @@ def test_connection():
 
 CHAT_ENDPOINT = "https://foundation-models.api.cloud.ru/v1/chat/completions"
 
-def ask_world_advice(question):
+def ask_world_advice(question, world=None):
     """One user-triggered, capped request; advisory text only, no world actions."""
     with _lock:
         key = _key
@@ -57,11 +57,15 @@ def ask_world_advice(question):
         raise ValueError("Сначала подключите ключ Cloud.ru")
     if not isinstance(question, str) or not 1 <= len(question.strip()) <= 600:
         raise ValueError("Введите запрос до 600 символов")
+    if world is not None:
+        if not isinstance(world, dict) or set(world) - {"day","population","hungry","homes","wood","food"} or any(type(v) not in (int, float) or not (0 <= v <= 10000000) for v in world.values()):
+            raise ValueError("Некорректная сводка мира")
+    snapshot = "\nСостояние мира: " + json.dumps(world, ensure_ascii=False) if world else ""
     payload = json.dumps({
         "model": MODEL,
         "messages": [
             {"role": "system", "content": "Ты наблюдатель игры AETHERRA. Дай краткий план развития деревни на русском языке. Не утверждай, что действия уже выполнены."},
-            {"role": "user", "content": question.strip()}
+            {"role": "user", "content": question.strip() + snapshot}
         ],
         "max_completion_tokens": 240,
         "stream": False
