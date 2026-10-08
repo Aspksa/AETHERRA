@@ -65,7 +65,7 @@ class Handler(SimpleHTTPRequestHandler):
                     elif route == "/api/ai/disconnect":
                         result = disconnect()
                     elif route == "/api/ai/advise":
-                        result = ask_world_advice(json.loads(body).get("question"))
+                        result = ask_world_advice(json.loads(body).get("question"), json.loads(body).get("world"))
                     else:
                         result = test_connection()
                     self._json(200, result)
