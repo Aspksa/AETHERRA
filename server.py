@@ -5,6 +5,7 @@ from pathlib import Path
 from threading import Timer, Thread
 from urllib.parse import urlparse
 import json
+import os
 import subprocess
 import sys
 import webbrowser
@@ -96,7 +97,8 @@ def main():
         return 1
     url = f"http://{HOST}:{PORT}/"
     print(f"AETHERRA: {url}", flush=True)
-    Timer(0.8, lambda: webbrowser.open(url)).start()
+    if os.environ.get('AETHERRA_NO_BROWSER') != '1':
+        Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
