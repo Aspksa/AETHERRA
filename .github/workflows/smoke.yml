@@ -61,8 +61,10 @@ jobs:
           node tests/world-saves.mjs
           node tests/save-safety.mjs
           node --check renderer.js
+          node --check planner.js
           node tests/map-renderer.mjs
           node tests/depot-survival.mjs
           node tests/save-portability.mjs
           node tests/demography.mjs
           node tests/home-rest.mjs
+          node tests/planner.mjs
