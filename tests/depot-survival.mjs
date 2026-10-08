@@ -13,7 +13,7 @@ for(const seedValue of [42,999,77,1]){
  run(`agents[0].x=${location.x}+.05; agents[0].y=${location.y}+.05;agents[0].hunger=85;stock.food=150;agents[0].path=undefined;agents[0].goal=undefined`);
  for(let i=0;i<70;i++)run('step()');
  assert.ok(run('agents[0].hunger<85'),'citizen cannot eat from inside depot tile seed '+seedValue);
- run(`agents[1].x=${location.x}+.05;agents[1].y=${location.y}+.05;agents[1].carrying=3;agents[1].hunger=0`);
+ run(`agents[1].x=${location.x}+.05;agents[1].y=${location.y}+.05;agents[1].carrying=3;agents[1].hunger=0;agents[1].path=undefined;agents[1].goal=undefined`);
  for(let i=0;i<70;i++)run('step()');
  assert.equal(run('agents[1].carrying'),0,'wood trapped within depot tile seed '+seedValue);
  run('agents[0].energy=18;agents[0].resting=false;agents[0].hunger=0');
