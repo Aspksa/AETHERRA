@@ -6,6 +6,7 @@ keeps a rollback copy, and never overwrites user data.
 import io
 import json
 import os
+import subprocess
 from pathlib import Path
 import shutil
 import sys
@@ -100,7 +101,14 @@ def install():
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "install"
     try:
-        if mode == "check":
+        if mode == "install-restart":
+            time.sleep(2)
+            print(install())
+            if sys.platform == "win32":
+                subprocess.Popen(["cmd", "/c", str(BASE / "AETHERRA.bat")], cwd=str(BASE), creationflags=subprocess.CREATE_NEW_CONSOLE)
+            else:
+                subprocess.Popen([sys.executable, str(BASE / "server.py")], cwd=str(BASE), start_new_session=True)
+        elif mode == "check":
             print(json.dumps(check()))
         elif mode == "install":
             print(install())
