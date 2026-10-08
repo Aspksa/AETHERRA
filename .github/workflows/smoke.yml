@@ -13,6 +13,12 @@ jobs:
           python-version: "3.12"
       - name: Python unit tests
         run: python -m unittest discover -s tests -v
+      - name: Confirm launcher rejects missing interpreter with negative Windows exit code
+        shell: pwsh
+        run: |
+          $content = Get-Content AETHERRA.bat -Raw
+          if ($content -notmatch 'AETHERRA_PYTHON_OK' -or $content -notmatch 'Candidate rejected') { throw 'Positive interpreter probe missing' }
+          if ($content -notmatch 'exit /b 1') { throw 'Probe must reject broken interpreters' }
       - name: Launch AETHERRA via Windows BAT and verify HTTP health
         shell: pwsh
         run: |
