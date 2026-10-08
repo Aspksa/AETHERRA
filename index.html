@@ -33,7 +33,7 @@ function noise(x,y){return (Math.sin(x*.22+seed*.017)+Math.cos(y*.25-seed*.031)+
 let lastBirthCycle=0;
 const idx=(x,y)=>y*W+x, inside=(x,y)=>x>=0&&x<W&&y>=0&&y<H;
 function log(msg){events.unshift('День '+Math.floor(day)+': '+msg);events.length=Math.min(events.length,8);document.getElementById('events').innerHTML=events.map(e=>'<div class="event">'+escapeHtml(e)+'</div>').join('')}
-function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];berries=[];events=[];day=0;lastBirthCycle=0;stock={wood:0,food:100};selected=null;if(typeof centerCamera==='function')centerCamera();
+function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];berries=[];events=[];day=0;lastBirthCycle=0;trail=new Array(W*H).fill(0);stock={wood:0,food:100};selected=null;if(typeof centerCamera==='function')centerCamera();
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const river=Math.abs(y-(17+4*Math.sin(x*.17+seed*.03)))<1.35;const n=noise(x,y)+rand()*.19;const water=river||n<-.66;const kind=water?'water':n>.63?'stone':n<-.32?'sand':'grass';tiles.push(kind);
 if(kind==='grass'&&rand()<.34&&!(x>13&&x<30&&y>7&&y<28))trees.push({x,y,wood:3+Math.floor(rand()*4)})}
 // Choose the largest connected landmass. All settlers and resources use this component.
@@ -104,7 +104,16 @@ function targetTree(a){
  }
  return null;
 }
-function chooseSite(){let best=null,score=-Infinity;for(let i=0;i<140;i++){let x=Math.floor(rand()*W),y=Math.floor(rand()*H);if(!free(x,y))continue;const near=homes.length?Math.min(...homes.map(h=>Math.hypot(h.x-x,h.y-y))):Math.hypot(x-depot.x,y-depot.y);const s=-Math.abs(near-3)+rand()*3;if(s>score){score=s;best={x,y}}}return best}
+// Trails: wear builds up on tiles residents walk over, speeds up walking and attracts new houses.
+let trail=[];
+const TRAIL_ROAD=100;
+function wearAt(x,y){return inside(x,y)?(trail[idx(x,y)]||0):0}
+function decayTrails(){
+ if(Math.round(day/.065)%20)return; // derived from the saved clock so a restored world decays identically
+ for(let i=0;i<trail.length;i++)if(trail[i]>0)trail[i]=trail[i]<.05?0:trail[i]*.994;
+}
+function chooseSite(){let best=null,score=-Infinity;for(let i=0;i<140;i++){let x=Math.floor(rand()*W),y=Math.floor(rand()*H);if(!free(x,y))continue;const near=homes.length?Math.min(...homes.map(h=>Math.hypot(h.x-x,h.y-y))):Math.hypot(x-depot.x,y-depot.y);let side=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)if(dx||dy)side+=wearAt(x+dx,y+dy);
+const s=-Math.abs(near-3)+rand()*3+Math.min(4,side/20)-(wearAt(x,y)>=TRAIL_ROAD/2?6:0)-Math.hypot(x-depot.x,y-depot.y)*.06;if(s>score){score=s;best={x,y}}}return best}
 function remember(a,message){
  const entry='День '+Math.floor(day)+': '+message;
  // Routine events (eating) refresh the latest entry instead of flooding the memory.
@@ -271,7 +280,7 @@ for(const a of agents){
   }
  }else{a.state='Отдыхает';a.energy=Math.min(100,a.energy+.08)}
 }
-socialStep();
+socialStep();decayTrails();
 // Births require housing and a sufficient food surplus; children consume food but do not work.
 const birthCycle=Math.floor(day/12);
 if(birthCycle>lastBirthCycle){
@@ -303,8 +312,8 @@ function move(a,x,y){
  // A tile-level path may be empty even when the actor is away from the target's center.
  const point=a.path.length?a.path[0]:{x,y},dx=point.x-a.x,dy=point.y-a.y,len=Math.hypot(dx,dy);
  if(len<.06){a.x=point.x;a.y=point.y;if(a.path.length)a.path.shift();return}
- const step=Math.min(.048,len),nx=a.x+dx/len*step,ny=a.y+dy/len*step;
- if(passable(Math.floor(nx),Math.floor(ny))){a.x=nx;a.y=ny}else{a.path=null}
+ const cell=wearAt(Math.floor(a.x),Math.floor(a.y)),step=Math.min(.048*(1+Math.min(.5,cell/60)),len),nx=a.x+dx/len*step,ny=a.y+dy/len*step;
+ if(passable(Math.floor(nx),Math.floor(ny))){a.x=nx;a.y=ny;const i=idx(Math.floor(nx),Math.floor(ny));trail[i]=Math.min(255,(trail[i]||0)+.35)}else{a.path=null}
 }
 
 const SAVE_KEY='AETHERRA_WORLD_V1';
@@ -316,10 +325,12 @@ function worldSnapshot(){
    foragePos:a.foraging?{x:a.foraging.x,y:a.foraging.y}:null})),
   homes:homes.map(h=>({...h})),trees:trees.map(t=>({...t})),
   berries:berries.map(b=>({...b})),events:[...events],depot:{...depot},
-  reachable:Array.from(reachable)};
+  reachable:Array.from(reachable),
+  trail:Object.fromEntries(trail.map((v,i)=>[i,Math.round(v*10)/10]).filter(([,v])=>v>=.5))};
 }
 function validateSnapshot(data){
  if(!data||data.schema!==SAVE_SCHEMA)throw Error('Неподдерживаемый формат сохранения');
+ if(data.trail!==undefined&&(!data.trail||typeof data.trail!=='object'||Array.isArray(data.trail)||Object.keys(data.trail).length>W*H||!Object.entries(data.trail).every(([i,v])=>/^\d{1,5}$/.test(i)&&+i<W*H&&Number.isFinite(v)&&v>=0&&v<=255)))throw Error('Повреждены тропинки');
  if(!Array.isArray(data.tiles)||data.tiles.length!==W*H||!data.tiles.every(t=>['water','grass','sand','stone'].includes(t)))throw Error('Повреждена карта');
  if(!Array.isArray(data.reachable)||data.reachable.length!==W*H||!data.reachable.every(n=>n===0||n===1))throw Error('Повреждена карта проходимости');
  if(!Array.isArray(data.agents)||data.agents.length>500||!Array.isArray(data.homes)||data.homes.length>300||!Array.isArray(data.trees)||data.trees.length>W*H||!Array.isArray(data.berries)||data.berries.length>W*H)throw Error('Повреждены объекты мира');
@@ -338,6 +349,7 @@ function restoreWorld(data){
  tiles=[...data.tiles];homes=data.homes.map(h=>({...h}));trees=data.trees.map(t=>({...t}));
  berries=data.berries.map(b=>({...b}));events=[...data.events];depot={...data.depot};
  reachable=Uint8Array.from(data.reachable);
+trail=new Array(W*H).fill(0);if(data.trail)for(const [i,v] of Object.entries(data.trail))trail[+i]=v;
  agents=data.agents.map(a=>{
   const copy={...a,bonds:a.bonds?{...a.bonds}:{},traits:Object.fromEntries(TRAITS.map(k=>[k,trait(a,k)])),memory:[...a.memory],experience:{...a.experience},path:a.path?a.path.map(p=>({...p})):undefined,goal:a.goal??undefined};
   copy.tree=copy.treePos?trees.find(t=>t.x===copy.treePos.x&&t.y===copy.treePos.y)||null:null;
@@ -372,7 +384,7 @@ document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+e
 function centerCamera(){const w=canvas.clientWidth||900,h=canvas.clientHeight||540;scale=Math.max(.45,Math.min(1,Math.min(w/(26*S),h/(18*S))));ox=w/2-(depot.x+.5)*S*scale;oy=h/2-(depot.y+.5)*S*scale}
 function size(){const r=canvas.getBoundingClientRect(),d=window.devicePixelRatio||1;canvas.width=Math.round(r.width*d);canvas.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0)}
 function draw(){
- AetherraRenderer.render(ctx,{canvas,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy});
+ AetherraRenderer.render(ctx,{canvas,trail,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy});
  requestAnimationFrame(draw);
 }
 function clickAt(e){let r=canvas.getBoundingClientRect(),x=(e.clientX-r.left-ox)/scale/S,y=(e.clientY-r.top-oy)/scale/S;
