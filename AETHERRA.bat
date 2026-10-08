@@ -32,7 +32,10 @@ if not errorlevel 1 (
   if not errorlevel 1 exit /b 0
 )
 echo Python server could not start. See AETHERRA_STARTUP.log
-echo Starting standalone browser mode...
+echo Server unavailable; trying to open an already running AETHERRA server.
+powershell -NoProfile -Command "try {$r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 'http://127.0.0.1:8765/health'; if($r.StatusCode -eq 200){Start-Process 'http://127.0.0.1:8765/';exit 0}} catch{};exit 1" >nul 2>nul
+if not errorlevel 1 exit /b 0
+echo Starting offline mode. Cloud.ru and updates REQUIRE the Python server.
 start "" "%ROOT%index.html"
 pause
 exit /b 1
