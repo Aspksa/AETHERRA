@@ -47,8 +47,17 @@ def local_sha():
 
 
 def check():
-    sha = remote_sha()
-    return {"installed": local_sha(), "latest": sha, "update_available": local_sha() != sha}
+    commit = json.loads(request_bytes(API, 1024 * 1024).decode("utf-8"))
+    sha = commit["sha"]
+    installed = local_sha()
+    message = commit.get("commit", {}).get("message", "").strip()
+    return {"installed": installed, "latest": sha,
+            "update_available": installed != sha,
+            "current_version": installed[:12] if installed else "не определена",
+            "latest_version": sha[:12],
+            "description": message.splitlines()[0][:240] if message else "Изменения в main",
+            "release_notes": message[:2000],
+            "source": f"https://github.com/{REPO}/commit/{sha}"}
 
 
 def install():
