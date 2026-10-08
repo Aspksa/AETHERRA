@@ -5,6 +5,7 @@ import unittest
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import HTTPError
 import update
 
 SHA="a"*40
@@ -22,6 +23,22 @@ class SafeUpdaterTests(unittest.TestCase):
                             for n in ("python-server","browser-syntax")]}
         with patch.object(update,"request_bytes",return_value=json.dumps(data).encode()):
             update.verify_ci(SHA)
+
+    def test_ci_rate_limit_fails_closed_with_clear_error(self):
+        error = HTTPError("https://api.github.com", 403, "rate limited", {}, None)
+        with patch.object(update, "request_bytes", side_effect=error):
+            with self.assertRaisesRegex(RuntimeError, "GitHub API.*403"):
+                update.verify_ci(SHA)
+
+    def test_only_previously_managed_stale_assets_removed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root / update.MANAGED).write_text(json.dumps([
+                "renderer.js", "lib/old.js", "assets/old.png", "saves/private.json", "../outside.txt", "index.html"
+            ]))
+            with patch.object(update, "BASE", root):
+                obsolete=update.obsolete_files({"renderer.js":"source", "index.html":"source"})
+            self.assertEqual(obsolete, ["assets/old.png","lib/old.js"])
 
     def test_runtime_manifest_includes_new_modules(self):
         stream=io.BytesIO()
