@@ -143,6 +143,11 @@ for(const a of agents){
  if(a.energy<22)a.resting=true;
  if(a.resting){
   const home=homes.find(h=>h.id===a.home);
+  if(home&&Math.hypot(a.x-home.x-.5,a.y-home.y-.5)>8){
+   a.state='Отдыхает в пути';a.energy=Math.min(100,a.energy+.65);
+   if(a.energy>=80)a.resting=false;
+   continue;
+  }
   if(home&&Math.hypot(a.x-home.x-.5,a.y-home.y-.5)>.45){
    a.state='Идёт домой отдыхать';
    move(a,home.x+.5,home.y+.5);
