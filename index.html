@@ -26,9 +26,10 @@ const canvas=document.getElementById('world'),ctx=canvas.getContext('2d'),S=52,W
 let seed=42,rng,tiles,agents,homes,trees,berries,events,day,stock,paused=false,speed=1,scale=1,ox=0,oy=0,selected=null,uid=0,drag=null,depot={x:22,y:17},reachable=new Uint8Array(W*H);
 function rand(){rng=(Math.imul(rng,1664525)+1013904223)>>>0;return rng/4294967296}
 function noise(x,y){return (Math.sin(x*.22+seed*.017)+Math.cos(y*.25-seed*.031)+Math.sin((x+y)*.15+seed*.09))/3}
+let lastBirthCycle=0;
 const idx=(x,y)=>y*W+x, inside=(x,y)=>x>=0&&x<W&&y>=0&&y<H;
 function log(msg){events.unshift('День '+Math.floor(day)+': '+msg);events.length=Math.min(events.length,8);document.getElementById('events').innerHTML=events.map(e=>'<div class="event">'+e+'</div>').join('')}
-function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];berries=[];events=[];day=0;stock={wood:0,food:100};selected=null;scale=.74;ox=100;oy=25;
+function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];berries=[];events=[];day=0;lastBirthCycle=0;stock={wood:0,food:100};selected=null;scale=.74;ox=100;oy=25;
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const river=Math.abs(y-(17+4*Math.sin(x*.17+seed*.03)))<1.35;const n=noise(x,y)+rand()*.19;const water=river||n<-.66;const kind=water?'water':n>.63?'stone':n<-.32?'sand':'grass';tiles.push(kind);
 if(kind==='grass'&&rand()<.34&&!(x>13&&x<30&&y>7&&y<28))trees.push({x,y,wood:3+Math.floor(rand()*4)})}
 // Choose the largest connected landmass. All settlers and resources use this component.
@@ -99,7 +100,7 @@ function targetTree(a){
  }
  return null;
 }
-function chooseSite(){let best=null,score=-Infinity;for(let i=0;i<60;i++){let x=12+Math.floor(rand()*23),y=6+Math.floor(rand()*25);if(!free(x,y))continue;const near=homes.length?Math.min(...homes.map(h=>Math.hypot(h.x-x,h.y-y))):Math.hypot(x-depot.x,y-depot.y);const s=-Math.abs(near-3)+rand()*3;if(s>score){score=s;best={x,y}}}return best}
+function chooseSite(){let best=null,score=-Infinity;for(let i=0;i<140;i++){let x=Math.floor(rand()*W),y=Math.floor(rand()*H);if(!free(x,y))continue;const near=homes.length?Math.min(...homes.map(h=>Math.hypot(h.x-x,h.y-y))):Math.hypot(x-depot.x,y-depot.y);const s=-Math.abs(near-3)+rand()*3;if(s>score){score=s;best={x,y}}}return best}
 function remember(a,message){
  a.memory.unshift('День '+Math.floor(day)+': '+message);a.memory.length=Math.min(a.memory.length,6);
 }
@@ -122,6 +123,8 @@ function targetBerries(a){
 function step(){day+=.065;
 for(const a of agents){
  if(a.health<=0)continue;
+ a.age+=.065/60;
+ if(a.age>75)a.health=Math.max(0,a.health-.008*(a.age-74));
  a.energy=Math.max(0,a.energy-.038);
  a.hunger=Math.min(100,a.hunger+.095);
  if(a.hunger>=90){a.health=Math.max(0,a.health-.035);a.state='Голодает'}
@@ -142,6 +145,7 @@ for(const a of agents){
   if(a.energy>=80)a.resting=false;
   continue;
  }
+ if(a.age<16){a.state='Растёт';continue}
  if(a.carrying){
   a.state='Доставляет древесину';move(a,depot.x+.5,depot.y+.5);
   if(Math.hypot(a.x-depot.x-.5,a.y-depot.y-.5)<.4){
@@ -174,7 +178,20 @@ for(const a of agents){
   }
  }else{a.state='Отдыхает';a.energy=Math.min(100,a.energy+.08)}
 }
-if(stock.wood>=12&&homes.length<10&&agents.some(a=>a.health>0)){const site=chooseSite();if(site){stock.wood-=12;const owner=agents.find(a=>a.health>0&&!a.home)||agents.find(a=>a.health>0);const h={id:uid++,x:site.x,y:site.y,level:1,owner:owner.name};owner.home=h.id;homes.push(h);log(h.owner+' построил дом')} }
+if(stock.wood>=12&&homes.length<40&&homes.length<Math.ceil(agents.filter(a=>a.health>0).length/2)&&agents.some(a=>a.health>0&&a.age>=16)){const site=chooseSite();if(site){stock.wood-=12;const owner=agents.find(a=>a.health>0&&a.age>=16&&!a.home)||agents.find(a=>a.health>0&&a.age>=16);const h={id:uid++,x:site.x,y:site.y,level:1,owner:owner.name};owner.home=h.id;homes.push(h);log(h.owner+' построил дом')} }
+// Births require housing and a sufficient food surplus; children consume food but do not work.
+const birthCycle=Math.floor(day/12);
+if(birthCycle>lastBirthCycle){
+ lastBirthCycle=birthCycle;
+ const living=agents.filter(a=>a.health>0),adults=living.filter(a=>a.age>=18);
+ if(day>=12&&living.length<80&&living.length<homes.length*3&&adults.length>=2&&stock.food>=living.length*3+6){
+  const parent=adults[Math.floor(rand()*adults.length)];
+  stock.food-=6;
+  const id=uid++;
+  agents.push({id,name:'Житель-'+id,x:parent.x,y:parent.y,age:0,state:'Растёт',target:null,carrying:0,energy:90,home:parent.home,hunger:15,health:100,decision:'food',nextDecision:day+1,foraging:null,experience:{wood:0,food:0},memory:['Родился в поселении'],resting:false});
+  log('В семье '+parent.name+' родился ребёнок');
+ }
+}
 // Wild food regrows slowly; no free food is credited directly to warehouse.
 if(rand()<.09){const b=berries[Math.floor(rand()*berries.length)];if(b&&b.food<6)b.food++}
 if(trees.filter(t=>t.wood>0).length<25&&rand()<.03){const x=Math.floor(rand()*W),y=Math.floor(rand()*H);if(tiles[idx(x,y)]==='grass'&&reachable[idx(x,y)]&&!homes.some(h=>Math.hypot(h.x-x,h.y-y)<2))trees.push({x,y,wood:4})}
@@ -196,7 +213,7 @@ function move(a,x,y){
 const SAVE_KEY='AETHERRA_WORLD_V1';
 const SAVE_SCHEMA=1;
 function worldSnapshot(){
- return {schema:SAVE_SCHEMA,seed,rng,uid,day,stock:{...stock},tiles:[...tiles],
+ return {schema:SAVE_SCHEMA,seed,rng,uid,day,lastBirthCycle,stock:{...stock},tiles:[...tiles],
   agents:agents.map(a=>({...a,tree:null,foraging:null,path:a.path?a.path.map(p=>({...p})):a.path,goal:a.goal??null,
    treePos:a.tree?{x:a.tree.x,y:a.tree.y}:null,
    foragePos:a.foraging?{x:a.foraging.x,y:a.foraging.y}:null})),
@@ -210,6 +227,7 @@ function validateSnapshot(data){
  if(!Array.isArray(data.reachable)||data.reachable.length!==W*H||!data.reachable.every(n=>n===0||n===1))throw Error('Повреждена карта проходимости');
  if(!Array.isArray(data.agents)||data.agents.length>500||!Array.isArray(data.homes)||data.homes.length>300||!Array.isArray(data.trees)||data.trees.length>W*H||!Array.isArray(data.berries)||data.berries.length>W*H)throw Error('Повреждены объекты мира');
  if(!data.stock||!Number.isFinite(data.stock.wood)||!Number.isFinite(data.stock.food)||data.stock.wood<0||data.stock.food<0)throw Error('Некорректные ресурсы');
+ if(data.lastBirthCycle!==undefined&&(!Number.isInteger(data.lastBirthCycle)||data.lastBirthCycle<0))throw Error('Некорректный цикл рождаемости');
  if(!Number.isFinite(data.day)||data.day<0||!Number.isInteger(data.rng)||data.rng<0||data.rng>4294967295||!Number.isInteger(data.uid)||data.uid<0||!Number.isFinite(data.seed))throw Error('Некорректное время или генератор');
  const pos=p=>p&&Number.isInteger(p.x)&&Number.isInteger(p.y)&&inside(p.x,p.y);
  if(!pos(data.depot)||data.reachable[idx(data.depot.x,data.depot.y)]!==1)throw Error('Некорректный склад');
@@ -219,7 +237,7 @@ function validateSnapshot(data){
 }
 function restoreWorld(data){
  validateSnapshot(data); // Never mutate the running world before validation.
- seed=data.seed;rng=data.rng;uid=data.uid;day=data.day;stock={...data.stock};
+ seed=data.seed;rng=data.rng;uid=data.uid;day=data.day;lastBirthCycle=data.lastBirthCycle??Math.floor(data.day/12);stock={...data.stock};
  tiles=[...data.tiles];homes=data.homes.map(h=>({...h}));trees=data.trees.map(t=>({...t}));
  berries=data.berries.map(b=>({...b}));events=[...data.events];depot={...data.depot};
  reachable=Uint8Array.from(data.reachable);
@@ -251,9 +269,9 @@ function loadWorld(){
   return true;
  }catch(e){document.getElementById('saveStatus').textContent='Ошибка загрузки: '+e.message;return false}
 }
-function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
+function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Дети',agents.filter(a=>a.health>0&&a.age<16).length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
 if(selected){let o=selected.type==='agent'?agents.find(a=>a.id===selected.id):homes.find(h=>h.id===selected.id);
-document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+o.name+'</b><br>Возраст: '+o.age+'<br>Действие: '+o.state+'<br>Энергия: '+Math.round(o.energy)+'%<br>Голод: '+Math.round(o.hunger)+'%<br>Здоровье: '+Math.round(o.health)+'%<br>Навык добычи: '+o.experience.wood+'<br>Сбор пищи: '+o.experience.food+'<br>Память: '+o.memory.slice(0,3).join('; ')+'<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+o.owner+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
+document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+o.name+'</b><br>Возраст: '+Math.floor(o.age)+'<br>Действие: '+o.state+'<br>Энергия: '+Math.round(o.energy)+'%<br>Голод: '+Math.round(o.hunger)+'%<br>Здоровье: '+Math.round(o.health)+'%<br>Навык добычи: '+o.experience.wood+'<br>Сбор пищи: '+o.experience.food+'<br>Память: '+o.memory.slice(0,3).join('; ')+'<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+o.owner+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
 function size(){const r=canvas.getBoundingClientRect(),d=window.devicePixelRatio||1;canvas.width=Math.round(r.width*d);canvas.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0)}
 function draw(){
  AetherraRenderer.render(ctx,{canvas,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy});
