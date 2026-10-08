@@ -22,6 +22,7 @@ footer{padding-top:16px;color:#96aba0;font-size:12px}label{display:block;font-si
 <aside><h2>👤 Выбранный объект</h2><div class="selected" id="selected">Выбери жителя или дом на карте.</div><h3>📜 События мира</h3><div id="events"></div></aside></div>
 <script src="renderer.js"></script>
 <script src="planner.js"></script>
+<script src="building.js"></script>
 <script>
 'use strict';
 const canvas=document.getElementById('world'),ctx=canvas.getContext('2d'),S=52,W=48,H=36;
@@ -33,7 +34,7 @@ function noise(x,y){return (Math.sin(x*.22+seed*.017)+Math.cos(y*.25-seed*.031)+
 let lastBirthCycle=0;
 const idx=(x,y)=>y*W+x, inside=(x,y)=>x>=0&&x<W&&y>=0&&y<H;
 function log(msg){events.unshift('День '+Math.floor(day)+': '+msg);events.length=Math.min(events.length,8);document.getElementById('events').innerHTML=events.map(e=>'<div class="event">'+escapeHtml(e)+'</div>').join('')}
-function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];berries=[];events=[];day=0;lastBirthCycle=0;trail=new Array(W*H).fill(0);stock={wood:0,food:100};selected=null;if(typeof centerCamera==='function')centerCamera();
+function createWorld(){seed=Number(document.getElementById('seed').value)||42;rng=seed>>>0;uid=0;tiles=[];agents=[];homes=[];trees=[];berries=[];events=[];day=0;lastBirthCycle=0;trail=new Array(W*H).fill(0);inventions=[];structures=[];spoilAcc=0;stock={wood:0,food:100};selected=null;if(typeof centerCamera==='function')centerCamera();
 for(let y=0;y<H;y++)for(let x=0;x<W;x++){const river=Math.abs(y-(17+4*Math.sin(x*.17+seed*.03)))<1.35;const n=noise(x,y)+rand()*.19;const water=river||n<-.66;const kind=water?'water':n>.63?'stone':n<-.32?'sand':'grass';tiles.push(kind);
 if(kind==='grass'&&rand()<.34&&!(x>13&&x<30&&y>7&&y<28))trees.push({x,y,wood:3+Math.floor(rand()*4)})}
 // Choose the largest connected landmass. All settlers and resources use this component.
@@ -124,9 +125,96 @@ function remember(a,message){
  if(a.memory.length&&a.memory[0].endsWith(': '+message)){a.memory[0]=entry;return}
  a.memory.unshift(entry);a.memory.length=Math.min(a.memory.length,6);
 }
+// Inventions: residents with an acute problem assemble a structure from bricks (function, material, place);
+// the whole village then builds it through the planner.
+let inventions=[],structures=[],spoilAcc=0;
+const MAX_INVENTIONS=6,MAX_STRUCTURES=12;
+const hasBuilding=()=>typeof AetherraBuilding!=='undefined';
+function coldCount(){return agents.filter(a=>a.health>0&&(a.cold||0)>40).length}
+function warmthRadius(st){return 4*(st.material==='stone'?1.25:1)}
+function warmAt(x,y){return structures.some(st=>st.fn==='warmth'&&Math.hypot(st.x+.5-x,st.y+.5-y)<=warmthRadius(st))}
+function rackFactor(){let n=0;for(const st of structures)if(st.fn==='preserve')n+=st.material==='stone'?1.6:1;return 1/(1+n)}
+// Cold at night wears residents out; a fire or sleeping at home protects. Cold never kills: it only drains energy.
+function updateCold(a){
+ const sheltered=a.resting&&a.home&&a.state==='Спит дома';
+ if(isNight()&&!sheltered&&!warmAt(a.x,a.y))a.cold=Math.min(100,(a.cold||0)+.8);
+ else a.cold=Math.max(0,(a.cold||0)-2);
+ if(a.cold>40)a.energy=Math.max(0,a.energy-.05);
+}
+function decayFood(){
+ // Stored food spoils slowly; drying racks and cellars slow it down.
+ spoilAcc+=stock.food*.0002*rackFactor();
+ if(spoilAcc>=1){const lost=Math.floor(spoilAcc);stock.food=Math.max(0,stock.food-lost);spoilAcc-=lost}
+}
+function currentProblems(){
+ const living=Math.max(1,agents.filter(p=>p.health>0).length);
+ const coldFit={depot:1,homes:.7};
+ return [
+  {name:'cold',severity:Math.min(1,coldCount()/Math.max(2,living/4)),fit:coldFit},
+  {name:'spoil',severity:stock.food>60?Math.min(1,stock.food/200):0,fit:{depot:1,homes:.5}}
+ ];
+}
+function considerInvention(a){
+ if(!hasBuilding()||a.health<=0||a.age<16||inventions.length>=MAX_INVENTIONS)return;
+ const curiosity=trait(a,'curiosity');
+ if(rand()>=.08+.3*curiosity)return;
+ const combo=AetherraBuilding.choose(currentProblems(),rand,curiosity);
+ if(!combo||inventions.some(i=>AetherraBuilding.sameCombo(i,combo)))return;
+ // One idea per function is enough until it has been built and proven insufficient.
+ if(inventions.some(i=>i.fn===combo.fn&&!structures.some(st=>st.inv===i.id)))return;
+ const inv={id:uid++,fn:combo.fn,material:combo.material,place:combo.place,name:AetherraBuilding.nameOf(combo),cost:AetherraBuilding.costOf(combo),inventor:a.name,day:Math.floor(day)};
+ inventions.push(inv);log(a.name+' придумал: '+inv.name);remember(a,'Придумал '+inv.name);
+}
+// How many structures of an invention the village wants right now.
+function structuresWanted(inv){
+ if(inv.fn==='warmth')return Math.min(3,Math.ceil(coldCount()/6));
+ if(inv.fn==='preserve')return stock.food>60?Math.min(3,Math.ceil(stock.food/80)):0;
+ return 0;
+}
+function pendingInvention(){
+ let pick=null,gap=0;
+ for(const inv of inventions){
+  const have=structures.filter(st=>st.inv===inv.id).length,need=structuresWanted(inv)-have;
+  if(need>gap&&structures.length<MAX_STRUCTURES){gap=need;pick=inv}
+ }
+ return pick;
+}
+function planStructure(a){
+ if(typeof AetherraPlanner==='undefined'||!a.home||a.age<16||a.planGoal==='hasHome')return;
+ const inv=pendingInvention();
+ if(!inv){if(a.planGoal==='hasStructure'){a.plan=undefined;a.planGoal=undefined;a.site=undefined;a.invId=undefined}return}
+ if(a.planGoal!=='hasStructure'&&agents.some(o=>o!==a&&o.health>0&&o.planGoal==='hasStructure'))return;
+ const steps=AetherraPlanner.plan({woodInHand:a.carrying>0,woodStocked:stock.wood>=inv.cost,hasStructure:false},{hasStructure:true});
+ if(steps&&steps.length){a.plan=steps;a.planGoal='hasStructure';a.invId=inv.id}else{a.plan=undefined;a.planGoal=undefined}
+}
+function chooseStructureSite(inv){
+ const anchor=inv.place==='homes'&&homes.length?{x:homes.reduce((s,h)=>s+h.x,0)/homes.length,y:homes.reduce((s,h)=>s+h.y,0)/homes.length}:depot;
+ let best=null,score=-Infinity;
+ for(let i=0;i<80;i++){
+  const x=Math.floor(anchor.x+(rand()-.5)*10),y=Math.floor(anchor.y+(rand()-.5)*10);
+  if(!free(x,y)||structures.some(st=>Math.hypot(st.x-x,st.y-y)<2.5)||wearAt(x,y)>=TRAIL_ROAD)continue;
+  const s=-Math.abs(Math.hypot(x-anchor.x,y-anchor.y)-3)+rand();
+  if(s>score){score=s;best={x,y}}
+ }
+ return best;
+}
+function buildStructureStep(a){
+ const inv=inventions.find(i=>i.id===a.invId);
+ if(!inv||stock.wood<inv.cost){a.plan=undefined;a.planGoal=undefined;a.site=undefined;a.invId=undefined;return false}
+ if(!a.site||!free(a.site.x,a.site.y))a.site=chooseStructureSite(inv);
+ if(!a.site)return false;
+ a.state='Идёт строить: '+inv.name;move(a,a.site.x+.5,a.site.y+.5);
+ if(Math.hypot(a.x-a.site.x-.5,a.y-a.site.y-.5)<.9){
+  stock.wood-=inv.cost;
+  structures.push({id:uid++,inv:inv.id,fn:inv.fn,material:inv.material,place:inv.place,x:a.site.x,y:a.site.y});
+  a.plan=undefined;a.planGoal=undefined;a.site=undefined;a.invId=undefined;a.path=undefined;log(a.name+' построил: '+inv.name);
+ }
+ return true;
+}
 // A homeless adult plans (GOAP) how to get a home: chop -> deliver -> buildHome. Only one resident builds at a time.
 function needsHome(a){return a.health>0&&a.age>=16&&!a.home&&homes.length<40&&homes.length<Math.ceil(agents.filter(p=>p.health>0).length/2)}
 function planHousing(a){
+ if(a.planGoal==='hasStructure')return;
  if(typeof AetherraPlanner==='undefined'||!needsHome(a)){a.plan=undefined;a.site=undefined;return}
  // Residents may build in parallel, but never more homes than the stock and the housing cap allow.
  const others=agents.filter(o=>o!==a&&o.health>0&&!o.home&&o.planGoal==='hasHome').length;
@@ -219,6 +307,7 @@ for(const a of agents){
  if(a.age>75)a.health=Math.max(0,a.health-.008*(a.age-74));
  if(a.health<=0){a.state='Умер от старости';log(a.name+' умер от старости');continue}
  a.energy=Math.max(0,a.energy-.038);
+ updateCold(a);
  a.hunger=Math.min(100,a.hunger+.095);
  if(a.hunger>=90){a.health=Math.max(0,a.health-.035);a.state='Голодает'}
  else if(a.hunger<40&&a.health<100)a.health=Math.min(100,a.health+.01);
@@ -260,8 +349,11 @@ for(const a of agents){
  if(day>=a.nextDecision){
   a.decision=chooseWork(a);a.nextDecision=day+1.3+rand()*.4;
   planHousing(a);
+  considerInvention(a);
+  planStructure(a);
  }
  if(a.plan&&a.plan[0]==='buildHome'&&buildHomeStep(a))continue;
+ if(a.plan&&a.plan[0]==='buildStructure'&&buildStructureStep(a))continue;
  if(a.decision==='food'){
   const b=targetBerries(a);
   if(b){
@@ -284,7 +376,7 @@ for(const a of agents){
   }
  }else{a.state='Отдыхает';a.energy=Math.min(100,a.energy+.08)}
 }
-socialStep();decayTrails();
+socialStep();decayTrails();decayFood();
 // Births require housing and a sufficient food surplus; children consume food but do not work.
 const birthCycle=Math.floor(day/12);
 if(birthCycle>lastBirthCycle){
@@ -329,11 +421,16 @@ function worldSnapshot(){
    foragePos:a.foraging?{x:a.foraging.x,y:a.foraging.y}:null})),
   homes:homes.map(h=>({...h})),trees:trees.map(t=>({...t})),
   berries:berries.map(b=>({...b})),events:[...events],depot:{...depot},
-  reachable:Array.from(reachable),
+  reachable:Array.from(reachable),inventions:inventions.map(i=>({...i})),structures:structures.map(t=>({...t})),spoilAcc,
   trail:Object.fromEntries(trail.map((v,i)=>[i,Math.round(v*10)/10]).filter(([,v])=>v>=.5))};
 }
 function validateSnapshot(data){
  if(!data||data.schema!==SAVE_SCHEMA)throw Error('Неподдерживаемый формат сохранения');
+ const known=(v,list)=>list.includes(v);
+ const FNS=['warmth','preserve'],MATS=['wood','stone'],PLACES_=['depot','homes'];
+ if(data.inventions!==undefined&&(!Array.isArray(data.inventions)||data.inventions.length>MAX_INVENTIONS||!data.inventions.every(i=>i&&Number.isInteger(i.id)&&known(i.fn,FNS)&&known(i.material,MATS)&&known(i.place,PLACES_)&&typeof i.name==='string'&&i.name.length<=60&&Number.isFinite(i.cost)&&i.cost>=0&&i.cost<=100&&typeof i.inventor==='string'&&i.inventor.length<=60&&Number.isFinite(i.day))))throw Error('Повреждены изобретения');
+ if(data.structures!==undefined&&(!Array.isArray(data.structures)||data.structures.length>MAX_STRUCTURES||!data.structures.every(t=>t&&Number.isInteger(t.id)&&Number.isInteger(t.inv)&&known(t.fn,FNS)&&known(t.material,MATS)&&known(t.place,PLACES_)&&Number.isInteger(t.x)&&Number.isInteger(t.y)&&inside(t.x,t.y))))throw Error('Повреждены постройки');
+ if(data.spoilAcc!==undefined&&!(Number.isFinite(data.spoilAcc)&&data.spoilAcc>=0&&data.spoilAcc<1000))throw Error('Повреждён запас');
  if(data.trail!==undefined&&(!data.trail||typeof data.trail!=='object'||Array.isArray(data.trail)||Object.keys(data.trail).length>W*H||!Object.entries(data.trail).every(([i,v])=>/^\d{1,5}$/.test(i)&&+i<W*H&&Number.isFinite(v)&&v>=0&&v<=255)))throw Error('Повреждены тропинки');
  if(!Array.isArray(data.tiles)||data.tiles.length!==W*H||!data.tiles.every(t=>['water','grass','sand','stone'].includes(t)))throw Error('Повреждена карта');
  if(!Array.isArray(data.reachable)||data.reachable.length!==W*H||!data.reachable.every(n=>n===0||n===1))throw Error('Повреждена карта проходимости');
@@ -343,7 +440,7 @@ function validateSnapshot(data){
  if(!Number.isFinite(data.day)||data.day<0||!Number.isInteger(data.rng)||data.rng<0||data.rng>4294967295||!Number.isInteger(data.uid)||data.uid<0||!Number.isFinite(data.seed))throw Error('Некорректное время или генератор');
  const pos=p=>p&&Number.isInteger(p.x)&&Number.isInteger(p.y)&&inside(p.x,p.y);
  if(!pos(data.depot)||data.reachable[idx(data.depot.x,data.depot.y)]!==1)throw Error('Некорректный склад');
- if(!data.agents.every(a=>Number.isInteger(a.id)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&inside(Math.floor(a.x),Math.floor(a.y))&&Number.isFinite(a.hunger)&&a.hunger>=0&&a.hunger<=100&&Number.isFinite(a.health)&&a.health>=0&&a.health<=100&&Number.isFinite(a.energy)&&a.energy>=0&&a.energy<=100&&Number.isFinite(a.carrying)&&a.carrying>=0&&a.experience&&Number.isFinite(a.experience.food)&&Number.isFinite(a.experience.wood)&&Array.isArray(a.memory)&&a.memory.length<=6&&a.memory.every(m=>typeof m==='string'&&m.length<=200)&&(a.bonds===undefined||a.bonds&&typeof a.bonds==='object'&&!Array.isArray(a.bonds)&&Object.keys(a.bonds).length<=12&&Object.entries(a.bonds).every(([id,v])=>/^\d{1,9}$/.test(id)&&Number.isFinite(v)&&v>=0&&v<=100))&&(a.traits===undefined||a.traits&&TRAITS.every(k=>Number.isFinite(a.traits[k])&&a.traits[k]>=0&&a.traits[k]<=1))&&(a.plan===undefined||a.plan===null||Array.isArray(a.plan)&&a.plan.length<=6&&a.plan.every(x=>['chop','deliver','buildHome'].includes(x)))&&(a.site==null||pos(a.site))&&typeof a.name==='string'&&a.name.length>=1&&a.name.length<=60&&(a.state===undefined||typeof a.state==='string'&&a.state.length<=80)))throw Error('Повреждены данные жителей');
+ if(!data.agents.every(a=>Number.isInteger(a.id)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&inside(Math.floor(a.x),Math.floor(a.y))&&Number.isFinite(a.hunger)&&a.hunger>=0&&a.hunger<=100&&Number.isFinite(a.health)&&a.health>=0&&a.health<=100&&Number.isFinite(a.energy)&&a.energy>=0&&a.energy<=100&&Number.isFinite(a.carrying)&&a.carrying>=0&&a.experience&&Number.isFinite(a.experience.food)&&Number.isFinite(a.experience.wood)&&Array.isArray(a.memory)&&a.memory.length<=6&&a.memory.every(m=>typeof m==='string'&&m.length<=200)&&(a.bonds===undefined||a.bonds&&typeof a.bonds==='object'&&!Array.isArray(a.bonds)&&Object.keys(a.bonds).length<=12&&Object.entries(a.bonds).every(([id,v])=>/^\d{1,9}$/.test(id)&&Number.isFinite(v)&&v>=0&&v<=100))&&(a.traits===undefined||a.traits&&TRAITS.every(k=>Number.isFinite(a.traits[k])&&a.traits[k]>=0&&a.traits[k]<=1))&&(a.plan===undefined||a.plan===null||Array.isArray(a.plan)&&a.plan.length<=6&&a.plan.every(x=>['chop','deliver','buildHome','buildStructure'].includes(x)))&&(a.site==null||pos(a.site))&&(a.cold===undefined||Number.isFinite(a.cold)&&a.cold>=0&&a.cold<=100)&&(a.invId===undefined||a.invId===null||Number.isInteger(a.invId))&&typeof a.name==='string'&&a.name.length>=1&&a.name.length<=60&&(a.state===undefined||typeof a.state==='string'&&a.state.length<=80)))throw Error('Повреждены данные жителей');
  if(!data.homes.every(h=>pos(h)&&Number.isInteger(h.id)&&(h.owner===undefined||typeof h.owner==='string'&&h.owner.length<=60))||!data.trees.every(t=>pos(t)&&Number.isFinite(t.wood)&&t.wood>=0)||!data.berries.every(b=>pos(b)&&Number.isFinite(b.food)&&b.food>=0))throw Error('Повреждены здания или природные ресурсы');
  if(!Array.isArray(data.events)||data.events.length>8||!data.events.every(e=>typeof e==='string'&&e.length<500))throw Error('Повреждена история мира');
 }
@@ -353,6 +450,7 @@ function restoreWorld(data){
  tiles=[...data.tiles];homes=data.homes.map(h=>({...h}));trees=data.trees.map(t=>({...t}));
  berries=data.berries.map(b=>({...b}));events=[...data.events];depot={...data.depot};
  reachable=Uint8Array.from(data.reachable);
+inventions=(data.inventions||[]).map(i=>({...i}));structures=(data.structures||[]).map(t=>({...t}));spoilAcc=data.spoilAcc||0;
 trail=new Array(W*H).fill(0);if(data.trail)for(const [i,v] of Object.entries(data.trail))trail[+i]=v;
  agents=data.agents.map(a=>{
   const copy={...a,bonds:a.bonds?{...a.bonds}:{},traits:Object.fromEntries(TRAITS.map(k=>[k,trait(a,k)])),memory:[...a.memory],experience:{...a.experience},path:a.path?a.path.map(p=>({...p})):undefined,goal:a.goal??undefined};
@@ -382,13 +480,13 @@ function loadWorld(){
   return true;
  }catch(e){document.getElementById('saveStatus').textContent='Ошибка загрузки: '+e.message;return false}
 }
-function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Время',isNight()?'🌙 ночь':'☀ день'],['Дети',agents.filter(a=>a.health>0&&a.age<16).length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
+function updatePanel(){document.getElementById('stats').innerHTML=[['День',Math.floor(day)],['Жители',agents.filter(a=>a.health>0).length],['Дома',homes.length],['Изобретения',inventions.length],['Время',isNight()?'🌙 ночь':'☀ день'],['Дети',agents.filter(a=>a.health>0&&a.age<16).length],['Древесина',stock.wood],['Пища',stock.food],['Голодают',agents.filter(a=>a.health>0&&a.hunger>=75).length],['Деревья',trees.filter(t=>t.wood>0).length]].map(([k,v])=>'<div class="stat"><span>'+k+'</span><strong>'+v+'</strong></div>').join('');
 if(selected){let o=selected.type==='agent'?agents.find(a=>a.id===selected.id):homes.find(h=>h.id===selected.id);
 document.getElementById('selected').innerHTML=o?(selected.type==='agent'?'<b>'+escapeHtml(o.name)+'</b><br>Возраст: '+Math.floor(o.age)+'<br>Действие: '+escapeHtml(o.state)+'<br>Энергия: '+Math.round(o.energy)+'%<br>Голод: '+Math.round(o.hunger)+'%<br>Здоровье: '+Math.round(o.health)+'%<br>Навык добычи: '+o.experience.wood+'<br>Сбор пищи: '+o.experience.food+'<br>Друзья: '+(Object.entries(o.bonds||{}).sort((x,y)=>y[1]-x[1]).slice(0,3).map(([id,v])=>{const f=agents.find(z=>z.id===+id);return f?escapeHtml(f.name)+' '+Math.round(v):null}).filter(Boolean).join(', ')||'пока нет')+'<br>Характер: '+TRAITS.map(k=>TRAIT_LABELS[k]+' '+Math.round(trait(o,k)*100)+'%').join(', ')+'<br>Память: '+escapeHtml(o.memory.slice(0,3).join('; '))+'<br>Несёт дерева: '+o.carrying:'<b>Деревянный дом</b><br>Строитель: '+escapeHtml(o.owner)+'<br>Уровень: '+o.level):'Объект больше не существует'}else document.getElementById('selected').textContent='Выбери жителя или дом на карте.'}
 function centerCamera(){const w=canvas.clientWidth||900,h=canvas.clientHeight||540;scale=Math.max(.45,Math.min(1,Math.min(w/(26*S),h/(18*S))));ox=w/2-(depot.x+.5)*S*scale;oy=h/2-(depot.y+.5)*S*scale}
 function size(){const r=canvas.getBoundingClientRect(),d=window.devicePixelRatio||1;canvas.width=Math.round(r.width*d);canvas.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0)}
 function draw(){
- AetherraRenderer.render(ctx,{daylight:daylight(day),canvas,trail,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy});
+ AetherraRenderer.render(ctx,{structures,daylight:daylight(day),canvas,trail,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy});
  requestAnimationFrame(draw);
 }
 function clickAt(e){let r=canvas.getBoundingClientRect(),x=(e.clientX-r.left-ox)/scale/S,y=(e.clientY-r.top-oy)/scale/S;

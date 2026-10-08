@@ -73,8 +73,25 @@ function drawAgent(ctx,a){
   }
  }
 }
+// Structures invented by residents: fire pits (warmth) and drying racks / cellars (preservation).
+function drawStructure(ctx,st,day){
+ const S=52,cx=(st.x+.5)*S,cy=(st.y+.6)*S,stone=st.material==='stone';
+ ellipse(ctx,cx,cy+8,20,7,'#142a2059');
+ if(st.fn==='warmth'){
+  ellipse(ctx,cx,cy+2,15,8,stone?'#7d867d':'#5b4230');
+  ellipse(ctx,cx,cy,11,5,'#2a2420');
+  const f=Math.sin(day*40+st.x*3)*1.5;
+  ellipse(ctx,cx,cy-5,6,9+f,'#e0742a');ellipse(ctx,cx,cy-4,3.5,6+f,'#f4c23d');
+ }else if(stone){
+  ellipse(ctx,cx,cy-2,22,15,'#8a928a');ellipse(ctx,cx,cy-5,18,11,'#a2aaa0');
+  ctx.fillStyle='#3a3029';ctx.fillRect(cx-5,cy-4,10,12);
+ }else{
+  ctx.fillStyle='#5b4230';ctx.fillRect(cx-17,cy-18,4,26);ctx.fillRect(cx+13,cy-18,4,26);ctx.fillRect(cx-19,cy-18,38,3);
+  ctx.fillStyle='#b94358';for(let i=0;i<5;i++)ctx.fillRect(cx-14+i*7,cy-14+(i%2)*3,3,6);
+ }
+}
 function render(ctx,w){
- const {trail,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy}=w;
+ const {structures=[],trail,tiles,trees,berries,homes,agents,selected,seed,day,depot,W,H,S,scale,ox,oy}=w;
  const width=w.canvas.clientWidth,height=w.canvas.clientHeight;
  ctx.clearRect(0,0,width,height);
  ctx.save();ctx.translate(ox,oy);ctx.scale(scale,scale);
@@ -125,6 +142,7 @@ function render(ctx,w){
  for(const t of trees){if(t.wood>0&&t.x>=left&&t.x<right&&t.y>=top&&t.y<bottom)items.push({y:t.y+.6,draw:()=>drawTree(ctx,t,seed)})}
  for(const h of homes)items.push({y:h.y+.9,draw:()=>drawHome(ctx,h,day)});
  items.push({y:depot.y+.7,draw:()=>drawDepot(ctx,depot)});
+ for(const st of structures)items.push({y:st.y+.7,draw:()=>drawStructure(ctx,st,day)});
  for(const a of agents){
   if(a.health<=0)continue;
   const px=a.x*S,py=a.y*S;
@@ -154,6 +172,7 @@ function render(ctx,w){
    ctx.fillStyle='rgba(255,226,150,'+Math.min(1,dark*1.6).toFixed(2)+')';ctx.fillRect(px+13,py+26,9,10);
   }
   glow((depot.x+.5)*S+22,(depot.y+.5)*S-28,70,dark*.6);
+  for(const st of structures)if(st.fn==='warmth')glow((st.x+.5)*S,(st.y+.5)*S-4,90,dark*.8);
   ctx.restore();
  }
 }
